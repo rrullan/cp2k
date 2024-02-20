@@ -1,6 +1,6 @@
 !--------------------------------------------------------------------------------------------------!
 !   CP2K: A general program to perform molecular dynamics simulations                              !
-!   Copyright 2000-2024 CP2K developers group <https://cp2k.org>                                   !
+!   Copyright 2000-2020 CP2K developers group <https://cp2k.org>                                   !
 !                                                                                                  !
 !   SPDX-License-Identifier: GPL-2.0-or-later                                                      !
 !--------------------------------------------------------------------------------------------------!
@@ -45,7 +45,8 @@ MODULE almo_scf
                                               Scheiber2018,&
                                               Staub2019,&
                                               cite_reference
-   USE cp_blacs_env,                    ONLY: cp_blacs_env_release
+   USE cp_blacs_env,                    ONLY: cp_blacs_env_release,&
+                                              cp_blacs_env_retain
    USE cp_control_types,                ONLY: dft_control_type
    USE cp_dbcsr_diag,                   ONLY: cp_dbcsr_syevd
    USE cp_dbcsr_operations,             ONLY: copy_dbcsr_to_fm
@@ -53,6 +54,9 @@ MODULE almo_scf
    USE cp_log_handling,                 ONLY: cp_get_default_logger,&
                                               cp_logger_get_default_unit_nr,&
                                               cp_logger_type
+   USE cp_para_env,                     ONLY: cp_para_env_release,&
+                                              cp_para_env_retain
+   USE cp_para_types,                   ONLY: cp_para_env_type
    USE dbcsr_api,                       ONLY: &
         dbcsr_add, dbcsr_add_on_diag, dbcsr_binary_read, dbcsr_checksum, dbcsr_copy, dbcsr_create, &
         dbcsr_distribution_get, dbcsr_distribution_type, dbcsr_filter, dbcsr_finalize, &
@@ -77,25 +81,24 @@ MODULE almo_scf
    USE kinds,                           ONLY: default_path_length,&
                                               dp
    USE mathlib,                         ONLY: binomial
-   USE message_passing,                 ONLY: mp_comm_type,&
-                                              mp_para_env_release,&
-                                              mp_para_env_type
+   USE message_passing,                 ONLY: mp_sum
    USE molecule_types,                  ONLY: get_molecule_set_info,&
                                               molecule_type
    USE mscfg_types,                     ONLY: get_matrix_from_submatrices,&
                                               molecular_scf_guess_env_type
    USE particle_types,                  ONLY: particle_type
-   USE qs_atomic_block,                 ONLY: calculate_atomic_block_dm
    USE qs_environment_types,            ONLY: get_qs_env,&
                                               qs_environment_type
-   USE qs_initial_guess,                ONLY: calculate_mopac_dm
+   USE qs_initial_guess,                ONLY: calculate_atomic_block_dm,&
+                                              calculate_mopac_dm
    USE qs_kind_types,                   ONLY: qs_kind_type
    USE qs_mo_types,                     ONLY: get_mo_set,&
-                                              mo_set_type
+                                              mo_set_p_type
    USE qs_rho_types,                    ONLY: qs_rho_get,&
                                               qs_rho_type
    USE qs_scf_post_scf,                 ONLY: qs_scf_compute_properties
-   USE qs_scf_types,                    ONLY: qs_scf_env_type
+   USE qs_scf_types,                    ONLY: qs_scf_env_type,&
+                                              scf_env_release
 #include "./base/base_uses.f90"
 
    IMPLICIT NONE
@@ -194,11 +197,11 @@ CONTAINS
 
       ! define the output_unit
       logger => cp_get_default_logger()
-      IF (logger%para_env%is_source()) THEN
+      IF (logger%para_env%ionode) THEN
          unit_nr = cp_logger_get_default_unit_nr(logger, local=.TRUE.)
       ELSE
          unit_nr = -1
-      END IF
+      ENDIF
 
       ! set optimizers' types
       almo_scf_env%opt_block_diag_diis%optimizer_type = optimizer_diis
@@ -221,8 +224,8 @@ CONTAINS
                       para_env=almo_scf_env%para_env, &
                       blacs_env=almo_scf_env%blacs_env, &
                       nelectron_spin=almo_scf_env%nelectrons_spin)
-      CALL almo_scf_env%para_env%retain()
-      CALL almo_scf_env%blacs_env%retain()
+      CALL cp_para_env_retain(almo_scf_env%para_env)
+      CALL cp_blacs_env_retain(almo_scf_env%blacs_env)
 
       ! copy basic quantities
       almo_scf_env%nspins = dft_control%nspins
@@ -260,7 +263,7 @@ CONTAINS
          almo_scf_env%ndomains = almo_scf_env%nmolecules
       ELSE
          almo_scf_env%ndomains = almo_scf_env%natoms
-      END IF
+      ENDIF
 
       ! allocate domain descriptors
       ndomains = almo_scf_env%ndomains
@@ -295,15 +298,26 @@ CONTAINS
          ! Na + Nb = Ne
          ! Na - Nb = Mult - 1 (assume Na > Nb as we do not have more info from get_molecule_set_info)
          DO idomain = 1, ndomains
-            nelec = almo_scf_env%nocc_of_domain(idomain, 1)
-            multip = almo_scf_env%multiplicity_of_domain(idomain)
-            nelec_a = (nelec + multip - 1)/2
-            nelec_b = nelec - nelec_a
+            IF (almo_scf_env%nspins .EQ. 1) THEN
+                nelec = almo_scf_env%nocc_of_domain(idomain, 1)
+                multip = almo_scf_env%multiplicity_of_domain(idomain)
+                nelec_a = (nelec + multip - 1)/2
+                nelec_b = nelec - nelec_a
+                 WRITE(*,*) "Number of a elecrons", nelec_a, "Number of b elecrons", nelec_b, "Number of elecrons", nelec
+                 WRITE(*,*) "Problem", almo_scf_env%nocc_of_domain
+            ELSE IF (almo_scf_env%nspins .EQ. 2) THEN
+                nelec_a = almo_scf_env%nocc_of_domain(idomain, 1) 
+                nelec_b = almo_scf_env%nocc_of_domain(idomain, 1)
+                multip = almo_scf_env%multiplicity_of_domain(idomain)
+                nelec = nelec_a + nelec_b
+                WRITE(*,*) "Number of a elecrons", nelec_a, "Number of b elecrons", nelec_b, "Number of elecrons", nelec 
+                WRITE(*,*) "Problem", almo_scf_env%nocc_of_domain(1,1)
+            END IF
             !! Initializing an occupation-rescaling trick if smearing is on
             IF (almo_scf_env%smear) THEN
                IF (multip .GT. 1) THEN
                   CPWARN("BEWARE: Non singlet state detected, treating it as closed-shell")
-               END IF
+               ENDIF
                !! Save real number of electrons of each spin, as it is required for Fermi-dirac smearing
                !! BEWARE : Non singlet states are allowed but treated as closed-shell
                almo_scf_env%real_ne_of_domain(idomain, :) = REAL(nelec, KIND=dp)/2.0_dp
@@ -318,14 +332,14 @@ CONTAINS
                   IF (nspins .EQ. 1) THEN
                      WRITE (*, *) "Domain ", idomain, " out of ", ndomains, ". Electrons = ", nelec
                      CPABORT("odd e- -- use unrestricted methods")
-                  END IF
+                  ENDIF
                   almo_scf_env%nocc_of_domain(idomain, 2) = nelec_b
                   ! RZK-warning: open-shell procedures have not been tested yet
                   ! Stop the program now
-                  CPABORT("Unrestricted ALMO methods are NYI")
-               END IF
+                 ! CPABORT("Unrestricted ALMO methods are NYI")
+               ENDIF
             END IF
-         END DO
+         ENDDO
          DO ispin = 1, nspins
             ! take care of the full virtual subspace
             almo_scf_env%nvirt_full_of_domain(:, ispin) = &
@@ -345,7 +359,7 @@ CONTAINS
                   almo_scf_env%nvirt_disc_of_domain(idomain, ispin) = &
                      almo_scf_env%nvirt_full_of_domain(idomain, ispin) - &
                      almo_scf_env%nvirt_of_domain(idomain, ispin)
-               END DO
+               ENDDO
             CASE (virt_occ_size)
                DO idomain = 1, ndomains
                   almo_scf_env%nvirt_of_domain(idomain, ispin) = &
@@ -354,23 +368,23 @@ CONTAINS
                   almo_scf_env%nvirt_disc_of_domain(idomain, ispin) = &
                      almo_scf_env%nvirt_full_of_domain(idomain, ispin) - &
                      almo_scf_env%nvirt_of_domain(idomain, ispin)
-               END DO
+               ENDDO
             CASE DEFAULT
                CPABORT("illegal method for virtual space truncation")
             END SELECT
-         END DO ! spin
+         ENDDO ! spin
       ELSE ! domains are atomic
          ! RZK-warning do the same for atomic domains/groups
          almo_scf_env%domain_index_of_atom(1:natoms) = (/(i, i=1, natoms)/)
-      END IF
+      ENDIF
 
       ao = 1
       DO idomain = 1, ndomains
          DO iao = 1, almo_scf_env%nbasis_of_domain(idomain)
             almo_scf_env%domain_index_of_ao(ao) = idomain
             ao = ao + 1
-         END DO
-      END DO
+         ENDDO
+      ENDDO
 
       almo_scf_env%mu_of_domain(:, :) = almo_scf_env%mu
 
@@ -384,7 +398,7 @@ CONTAINS
          ALLOCATE (almo_scf_env%domain_index_of_ao_block(nmols))
          ! if distr blocks are molecular then domain layout is also molecular
          almo_scf_env%domain_index_of_ao_block(:) = (/(i, i=1, nmols)/)
-      END IF
+      ENDIF
       ! mo blocks
       IF (almo_scf_env%mat_distr_mos == almo_mat_distr_atomic) THEN
          ALLOCATE (almo_scf_env%domain_index_of_mo_block(natoms))
@@ -394,7 +408,7 @@ CONTAINS
          ALLOCATE (almo_scf_env%domain_index_of_mo_block(nmols))
          ! if distr blocks are molecular then domain layout is also molecular
          almo_scf_env%domain_index_of_mo_block(:) = (/(i, i=1, nmols)/)
-      END IF
+      ENDIF
 
       ! set all flags
       !almo_scf_env%need_previous_ks=.FALSE.
@@ -416,48 +430,48 @@ CONTAINS
              almo_scf_env%deloc_method .EQ. almo_deloc_xalmo_x .OR. &
              almo_scf_env%deloc_method .EQ. almo_deloc_xalmo_1diag) THEN
             CPABORT("Forces for perturbative methods are NYI. Change DELOCALIZE_METHOD")
-         END IF
+         ENDIF
          ! switch to ASPC after a certain number of exact steps is done
          IF (almo_scf_env%almo_history%istore .GT. (almo_scf_env%almo_history%nstore + 1)) THEN
             IF (almo_scf_env%opt_block_diag_pcg%eps_error_early .GT. 0.0_dp) THEN
                almo_scf_env%opt_block_diag_pcg%eps_error = almo_scf_env%opt_block_diag_pcg%eps_error_early
                almo_scf_env%opt_block_diag_pcg%early_stopping_on = .TRUE.
                IF (unit_nr > 0) WRITE (*, *) "ALMO_OPTIMIZER_PCG: EPS_ERROR_EARLY is on"
-            END IF
+            ENDIF
             IF (almo_scf_env%opt_block_diag_diis%eps_error_early .GT. 0.0_dp) THEN
                almo_scf_env%opt_block_diag_diis%eps_error = almo_scf_env%opt_block_diag_diis%eps_error_early
                almo_scf_env%opt_block_diag_diis%early_stopping_on = .TRUE.
                IF (unit_nr > 0) WRITE (*, *) "ALMO_OPTIMIZER_DIIS: EPS_ERROR_EARLY is on"
-            END IF
+            ENDIF
             IF (almo_scf_env%opt_block_diag_pcg%max_iter_early .GT. 0) THEN
                almo_scf_env%opt_block_diag_pcg%max_iter = almo_scf_env%opt_block_diag_pcg%max_iter_early
                almo_scf_env%opt_block_diag_pcg%early_stopping_on = .TRUE.
                IF (unit_nr > 0) WRITE (*, *) "ALMO_OPTIMIZER_PCG: MAX_ITER_EARLY is on"
-            END IF
+            ENDIF
             IF (almo_scf_env%opt_block_diag_diis%max_iter_early .GT. 0) THEN
                almo_scf_env%opt_block_diag_diis%max_iter = almo_scf_env%opt_block_diag_diis%max_iter_early
                almo_scf_env%opt_block_diag_diis%early_stopping_on = .TRUE.
                IF (unit_nr > 0) WRITE (*, *) "ALMO_OPTIMIZER_DIIS: MAX_ITER_EARLY is on"
-            END IF
+            ENDIF
          ELSE
             almo_scf_env%opt_block_diag_diis%early_stopping_on = .FALSE.
             almo_scf_env%opt_block_diag_pcg%early_stopping_on = .FALSE.
-         END IF
+         ENDIF
          IF (almo_scf_env%xalmo_history%istore .GT. (almo_scf_env%xalmo_history%nstore + 1)) THEN
             IF (almo_scf_env%opt_xalmo_pcg%eps_error_early .GT. 0.0_dp) THEN
                almo_scf_env%opt_xalmo_pcg%eps_error = almo_scf_env%opt_xalmo_pcg%eps_error_early
                almo_scf_env%opt_xalmo_pcg%early_stopping_on = .TRUE.
                IF (unit_nr > 0) WRITE (*, *) "XALMO_OPTIMIZER_PCG: EPS_ERROR_EARLY is on"
-            END IF
+            ENDIF
             IF (almo_scf_env%opt_xalmo_pcg%max_iter_early .GT. 0.0_dp) THEN
                almo_scf_env%opt_xalmo_pcg%max_iter = almo_scf_env%opt_xalmo_pcg%max_iter_early
                almo_scf_env%opt_xalmo_pcg%early_stopping_on = .TRUE.
                IF (unit_nr > 0) WRITE (*, *) "XALMO_OPTIMIZER_PCG: MAX_ITER_EARLY is on"
-            END IF
+            ENDIF
          ELSE
             almo_scf_env%opt_xalmo_pcg%early_stopping_on = .FALSE.
-         END IF
-      END IF
+         ENDIF
+      ENDIF
 
       ! create all matrices
       CALL almo_scf_env_create_matrices(almo_scf_env, matrix_s(1)%matrix)
@@ -530,11 +544,11 @@ CONTAINS
       REAL(KIND=dp)                                      :: alpha, cs_pos, energy, kTS_sum
       TYPE(atomic_kind_type), DIMENSION(:), POINTER      :: atomic_kind_set
       TYPE(cp_logger_type), POINTER                      :: logger
+      TYPE(cp_para_env_type), POINTER                    :: para_env
       TYPE(dbcsr_distribution_type)                      :: dist
       TYPE(dbcsr_p_type), DIMENSION(:), POINTER          :: matrix_s, rho_ao
       TYPE(dft_control_type), POINTER                    :: dft_control
       TYPE(molecular_scf_guess_env_type), POINTER        :: mscfg_env
-      TYPE(mp_para_env_type), POINTER                    :: para_env
       TYPE(particle_type), DIMENSION(:), POINTER         :: particle_set
       TYPE(qs_kind_type), DIMENSION(:), POINTER          :: qs_kind_set
       TYPE(qs_rho_type), POINTER                         :: rho
@@ -545,11 +559,11 @@ CONTAINS
 
       ! get a useful output_unit
       logger => cp_get_default_logger()
-      IF (logger%para_env%is_source()) THEN
+      IF (logger%para_env%ionode) THEN
          unit_nr = cp_logger_get_default_unit_nr(logger, local=.TRUE.)
       ELSE
          unit_nr = -1
-      END IF
+      ENDIF
 
       ! get basic quantities from the qs_env
       CALL get_qs_env(qs_env, &
@@ -575,7 +589,7 @@ CONTAINS
          aspc_guess = .FALSE.
       ELSE
          aspc_guess = .TRUE.
-      END IF
+      ENDIF
 
       nspins = almo_scf_env%nspins
 
@@ -595,7 +609,7 @@ CONTAINS
                CALL dbcsr_filter(almo_scf_env%matrix_t_blk(ispin), &
                                  almo_scf_env%eps_filter)
 
-            END DO
+            ENDDO
 
          CASE (atomic_guess)
 
@@ -607,9 +621,10 @@ CONTAINS
                                        nspins, nelectron_spin, &
                                        para_env)
             ELSE
-               CALL calculate_atomic_block_dm(rho_ao, matrix_s(1)%matrix, atomic_kind_set, qs_kind_set, &
+               CALL calculate_atomic_block_dm(rho_ao, &
+                                              matrix_s(1)%matrix, particle_set, atomic_kind_set, qs_kind_set, &
                                               nspins, nelectron_spin, unit_nr, para_env)
-            END IF
+            ENDIF
 
             DO ispin = 1, nspins
                ! copy the atomic-block dm into matrix_p_blk
@@ -618,7 +633,7 @@ CONTAINS
                                       .FALSE.)
                CALL dbcsr_filter(almo_scf_env%matrix_p_blk(ispin), &
                                  almo_scf_env%eps_filter)
-            END DO ! ispin
+            ENDDO ! ispin
 
             ! obtain orbitals from the density matrix
             ! (the current version of ALMO SCF needs orbitals)
@@ -635,8 +650,8 @@ CONTAINS
                cs_pos = dbcsr_checksum(almo_scf_env%matrix_t_blk(ispin), pos=.TRUE.)
                IF (unit_nr > 0) THEN
                   WRITE (unit_nr, '(T2,A,E20.8)') "Read restart ALMO "//TRIM(file_name)//" with checksum: ", cs_pos
-               END IF
-            END DO
+               ENDIF
+            ENDDO
          END SELECT
 
       ELSE !aspc_guess
@@ -673,12 +688,12 @@ CONTAINS
                                       almo_scf_env%almo_history%matrix_t(ispin), &
                                       1.0_dp, almo_scf_env%matrix_t_blk(ispin), &
                                       retain_sparsity=.TRUE.)
-               END IF
-            END DO !iaspc
+               ENDIF
+            ENDDO !iaspc
 
-         END DO !ispin
+         ENDDO !ispin
 
-      END IF !aspc_guess?
+      ENDIF !aspc_guess?
 
       DO ispin = 1, nspins
 
@@ -722,7 +737,7 @@ CONTAINS
                                  para_env=almo_scf_env%para_env, &
                                  blacs_env=almo_scf_env%blacs_env)
 
-      END DO
+      ENDDO
 
       ! compute dm from the projector(s)
       IF (nspins == 1) THEN
@@ -731,13 +746,13 @@ CONTAINS
          IF (almo_scf_env%smear) THEN
             almo_scf_env%kTS(1) = almo_scf_env%kTS(1)*2.0_dp
          END IF
-      END IF
+      ENDIF
 
       IF (almo_scf_env%smear) THEN
          kTS_sum = SUM(almo_scf_env%kTS)
       ELSE
          kTS_sum = 0.0_dp
-      END IF
+      ENDIF
 
       CALL almo_dm_to_almo_ks(qs_env, &
                               almo_scf_env%matrix_p, &
@@ -752,10 +767,10 @@ CONTAINS
          IF (almo_scf_env%almo_scf_guess .EQ. molecular_guess) THEN
             WRITE (unit_nr, '(T2,A38,F40.10)') "Single-molecule energy:", &
                SUM(mscfg_env%energy_of_frag)
-         END IF
+         ENDIF
          WRITE (unit_nr, '(T2,A38,F40.10)') "Energy of the initial guess:", energy
          WRITE (unit_nr, '()')
-      END IF
+      ENDIF
 
       CALL timestop(handle)
 
@@ -783,11 +798,11 @@ CONTAINS
 
       ! get a useful output_unit
       logger => cp_get_default_logger()
-      IF (logger%para_env%is_source()) THEN
+      IF (logger%para_env%ionode) THEN
          unit_nr = cp_logger_get_default_unit_nr(logger, local=.TRUE.)
       ELSE
          unit_nr = -1
-      END IF
+      ENDIF
 
       IF (almo_scf_env%almo_history%nstore > 0) THEN
 
@@ -801,7 +816,7 @@ CONTAINS
                CALL dbcsr_create(almo_scf_env%almo_history%matrix_t(ispin), &
                                  template=almo_scf_env%matrix_t_blk(ispin), &
                                  matrix_type=dbcsr_type_no_symmetry)
-            END IF
+            ENDIF
             CALL dbcsr_copy(almo_scf_env%almo_history%matrix_t(ispin), &
                             almo_scf_env%matrix_t_blk(ispin))
 
@@ -809,7 +824,7 @@ CONTAINS
                CALL dbcsr_create(almo_scf_env%almo_history%matrix_p_up_down(ispin, istore), &
                                  template=almo_scf_env%matrix_s(1), &
                                  matrix_type=dbcsr_type_no_symmetry)
-            END IF
+            ENDIF
 
             CALL dbcsr_create(matrix_no_tmp1, template=almo_scf_env%matrix_t_blk(ispin), &
                               matrix_type=dbcsr_type_no_symmetry)
@@ -834,9 +849,9 @@ CONTAINS
             CALL dbcsr_release(matrix_no_tmp1)
             CALL dbcsr_release(matrix_no_tmp2)
 
-         END DO
+         ENDDO
 
-      END IF
+      ENDIF
 
       ! exrapolate xalmos?
       delocalization_uses_extrapolation = &
@@ -855,7 +870,7 @@ CONTAINS
                CALL dbcsr_create(almo_scf_env%xalmo_history%matrix_t(ispin), &
                                  template=almo_scf_env%matrix_t(ispin), &
                                  matrix_type=dbcsr_type_no_symmetry)
-            END IF
+            ENDIF
             CALL dbcsr_copy(almo_scf_env%xalmo_history%matrix_t(ispin), &
                             almo_scf_env%matrix_t(ispin))
 
@@ -867,7 +882,7 @@ CONTAINS
                CALL dbcsr_create(almo_scf_env%xalmo_history%matrix_p_up_down(ispin, istore), &
                                  template=almo_scf_env%matrix_s(1), &
                                  matrix_type=dbcsr_type_no_symmetry)
-            END IF
+            ENDIF
 
             CALL dbcsr_create(matrix_no_tmp3, template=almo_scf_env%matrix_t(ispin), &
                               matrix_type=dbcsr_type_no_symmetry)
@@ -898,9 +913,9 @@ CONTAINS
             CALL dbcsr_release(matrix_no_tmp3)
             CALL dbcsr_release(matrix_no_tmp4)
 
-         END DO
+         ENDDO
 
-      END IF
+      ENDIF
 
       CALL timestop(handle)
 
@@ -949,7 +964,7 @@ CONTAINS
                ! print out TRUST REGION options
                CALL print_optimizer_options(almo_scf_env%opt_block_diag_trustr, unit_nr)
             END SELECT
-         END IF
+         ENDIF
 
          SELECT CASE (almo_scf_env%deloc_method)
          CASE (almo_deloc_none)
@@ -993,9 +1008,9 @@ CONTAINS
                CASE (almo_scf_pcg)
                   CALL print_optimizer_options(almo_scf_env%opt_xalmo_pcg, unit_nr)
                END SELECT
-            END IF
+            ENDIF
 
-         END IF
+         ENDIF
 
          !SELECT CASE(almo_scf_env%domain_layout_mos)
          !CASE(almo_domain_layout_orbital)
@@ -1093,7 +1108,7 @@ CONTAINS
                index1_prev = 1
             ELSE
                index1_prev = almo_scf_env%domain_map(1)%index1(idomain - 1)
-            END IF
+            ENDIF
 
             SELECT CASE (almo_scf_env%deloc_method)
             CASE (almo_deloc_none)
@@ -1106,7 +1121,7 @@ CONTAINS
                nneighbors(idomain) = -1
             END SELECT
 
-         END DO ! cycle over domains
+         ENDDO ! cycle over domains
 
          sum_temp = SUM(nneighbors(:))
          WRITE (unit_nr, '(T2,A,T53,I5,F9.2,I5,I9)') &
@@ -1146,7 +1161,7 @@ CONTAINS
                   almo_scf_env%charge_of_domain(idomain), &
                   ADJUSTR(TRIM(neig_string))
 
-            END DO ! cycle over domains
+            ENDDO ! cycle over domains
 
             SELECT CASE (almo_scf_env%deloc_method)
             CASE (almo_deloc_xalmo_1diag, almo_deloc_xalmo_x, almo_deloc_xalmo_scf)
@@ -1163,14 +1178,14 @@ CONTAINS
                      index1_prev = 1
                   ELSE
                      index1_prev = almo_scf_env%domain_map(1)%index1(idomain - 1)
-                  END IF
+                  ENDIF
 
                   WRITE (unit_nr, '(T2,I10,":")') idomain
                   WRITE (unit_nr, '(T12,11I6)') &
                      almo_scf_env%domain_map(1)%pairs &
                      (index1_prev:almo_scf_env%domain_map(1)%index1(idomain) - 1, 1) ! includes self
 
-               END DO ! cycle over domains
+               ENDDO ! cycle over domains
 
             END SELECT
 
@@ -1178,7 +1193,7 @@ CONTAINS
 
             WRITE (unit_nr, '(T2,A)') "The system is too big to print details for each fragment."
 
-         END IF ! how many fragments?
+         ENDIF ! how many fragments?
 
          WRITE (unit_nr, '(T2,A)') REPEAT("-", 79)
 
@@ -1186,7 +1201,7 @@ CONTAINS
 
          DEALLOCATE (nneighbors)
 
-      END IF ! unit_nr > 0
+      ENDIF ! unit_nr > 0
 
       CALL timestop(handle)
 
@@ -1214,11 +1229,11 @@ CONTAINS
 
       ! get a useful output_unit
       logger => cp_get_default_logger()
-      IF (logger%para_env%is_source()) THEN
+      IF (logger%para_env%ionode) THEN
          unit_nr = cp_logger_get_default_unit_nr(logger, local=.TRUE.)
       ELSE
          unit_nr = -1
-      END IF
+      ENDIF
 
       ! make almo copy of S
       ! also copy S to S_blk (i.e. to S with the domain structure imposed)
@@ -1232,7 +1247,7 @@ CONTAINS
                                 almo_scf_env%mat_distr_aos, .FALSE.)
          CALL dbcsr_copy(almo_scf_env%matrix_s_blk(1), &
                          almo_scf_env%matrix_s(1), keep_sparsity=.TRUE.)
-      END IF
+      ENDIF
 
       CALL dbcsr_filter(almo_scf_env%matrix_s(1), almo_scf_env%eps_filter)
       CALL dbcsr_filter(almo_scf_env%matrix_s_blk(1), almo_scf_env%eps_filter)
@@ -1251,7 +1266,7 @@ CONTAINS
                                almo_scf_env%matrix_s_blk(1), &
                                threshold=almo_scf_env%eps_filter, &
                                filter_eps=almo_scf_env%eps_filter)
-      END IF
+      ENDIF
 
       CALL timestop(handle)
 
@@ -1279,11 +1294,11 @@ CONTAINS
 
       ! get a useful output_unit
       logger => cp_get_default_logger()
-      IF (logger%para_env%is_source()) THEN
+      IF (logger%para_env%ionode) THEN
          unit_nr = cp_logger_get_default_unit_nr(logger, local=.TRUE.)
       ELSE
          unit_nr = -1
-      END IF
+      ENDIF
 
       SELECT CASE (almo_scf_env%almo_update_algorithm)
       CASE (almo_scf_pcg, almo_scf_trustr, almo_scf_skip)
@@ -1326,7 +1341,7 @@ CONTAINS
                                    order_lanczos=almo_scf_env%order_lanczos, &
                                    eps_lanczos=almo_scf_env%eps_lanczos, &
                                    max_iter_lanczos=almo_scf_env%max_iter_lanczos)
-         END DO
+         ENDDO
 
       CASE (almo_scf_diag)
 
@@ -1342,7 +1357,7 @@ CONTAINS
                          almo_scf_env%matrix_ks(ispin))
          CALL dbcsr_copy(almo_scf_env%matrix_sigma_inv_0deloc(ispin), &
                          almo_scf_env%matrix_sigma_inv(ispin))
-      END DO
+      ENDDO
 
       CALL timestop(handle)
 
@@ -1378,11 +1393,11 @@ CONTAINS
 
       ! get a useful output_unit
       logger => cp_get_default_logger()
-      IF (logger%para_env%is_source()) THEN
+      IF (logger%para_env%ionode) THEN
          unit_nr = cp_logger_get_default_unit_nr(logger, local=.TRUE.)
       ELSE
          unit_nr = -1
-      END IF
+      ENDIF
 
       ! create a local optimizer that handles XALMO DIIS
       ! the options of this optimizer are arbitrary because
@@ -1427,9 +1442,9 @@ CONTAINS
                                              iblock_row, iblock_col, p_new_block)
                   CPASSERT(ASSOCIATED(p_new_block))
                   p_new_block(:, :) = 1.0_dp
-               END IF
-            END DO
-         END DO
+               ENDIF
+            ENDDO
+         ENDDO
          CALL dbcsr_finalize(no_quench(1))
          IF (almo_scf_env%nspins .GT. 1) THEN
             DO ispin = 2, almo_scf_env%nspins
@@ -1437,8 +1452,8 @@ CONTAINS
                                  template=almo_scf_env%matrix_t(1), &
                                  matrix_type=dbcsr_type_no_symmetry)
                CALL dbcsr_copy(no_quench(ispin), no_quench(1))
-            END DO
-         END IF
+            ENDDO
+         ENDIF
 
       END SELECT
 
@@ -1448,7 +1463,7 @@ CONTAINS
          DO ispin = 1, almo_scf_env%nspins
             CALL dbcsr_copy(almo_scf_env%matrix_t(ispin), &
                             almo_scf_env%matrix_t_blk(ispin))
-         END DO
+         ENDDO
 
       CASE (almo_deloc_x, almo_deloc_xk, almo_deloc_x_then_scf)
 
@@ -1502,7 +1517,7 @@ CONTAINS
 
             CPABORT("Other algorithms do not exist")
 
-         END IF
+         ENDIF
 
       CASE (almo_deloc_xalmo_1diag)
 
@@ -1512,7 +1527,7 @@ CONTAINS
             DO ispin = 1, almo_scf_env%nspins
                CALL dbcsr_copy(almo_scf_env%matrix_t(ispin), &
                                almo_scf_env%matrix_t_blk(ispin))
-            END DO
+            ENDDO
             CALL almo_scf_xalmo_eigensolver(qs_env, almo_scf_env, &
                                             arbitrary_optimizer)
 
@@ -1520,7 +1535,7 @@ CONTAINS
 
             CPABORT("Other algorithms do not exist")
 
-         END IF
+         ENDIF
 
       CASE (almo_deloc_xalmo_x)
 
@@ -1551,7 +1566,7 @@ CONTAINS
 
             CPABORT("Other algorithms do not exist")
 
-         END IF
+         ENDIF
 
       CASE (almo_deloc_xalmo_scf)
 
@@ -1563,7 +1578,7 @@ CONTAINS
             DO ispin = 1, almo_scf_env%nspins
                CALL dbcsr_copy(almo_scf_env%matrix_t(ispin), &
                                almo_scf_env%matrix_t_blk(ispin))
-            END DO
+            ENDDO
             CALL almo_scf_xalmo_eigensolver(qs_env, almo_scf_env, &
                                             arbitrary_optimizer)
 
@@ -1589,7 +1604,7 @@ CONTAINS
                !ENDDO
                CALL almo_scf_xalmo_eigensolver(qs_env, almo_scf_env, &
                                                arbitrary_optimizer)
-            END IF ! experimental
+            ENDIF ! experimental
 
          ELSE IF (almo_scf_env%xalmo_update_algorithm .EQ. almo_scf_trustr) THEN
 
@@ -1606,7 +1621,7 @@ CONTAINS
 
             CPABORT("Other algorithms do not exist")
 
-         END IF
+         ENDIF
 
       CASE DEFAULT
 
@@ -1619,7 +1634,7 @@ CONTAINS
 
          IF (almo_scf_env%deloc_truncate_virt .NE. virt_full) THEN
             CPABORT("full scf is NYI for truncated virtual space")
-         END IF
+         ENDIF
 
          IF (almo_scf_env%xalmo_update_algorithm .EQ. almo_scf_pcg) THEN
 
@@ -1648,7 +1663,7 @@ CONTAINS
 
             CPABORT("Other algorithms do not exist")
 
-         END IF
+         ENDIF
 
       END SELECT
 
@@ -1657,7 +1672,7 @@ CONTAINS
       CASE (almo_deloc_x, almo_deloc_scf, almo_deloc_x_then_scf)
          DO ispin = 1, almo_scf_env%nspins
             CALL dbcsr_release(no_quench(ispin))
-         END DO
+         ENDDO
          DEALLOCATE (no_quench)
       END SELECT
 
@@ -1694,20 +1709,20 @@ CONTAINS
                                    order_lanczos=almo_scf_env%order_lanczos, &
                                    eps_lanczos=almo_scf_env%eps_lanczos, &
                                    max_iter_lanczos=almo_scf_env%max_iter_lanczos)
-         END DO
+         ENDDO
 
          CALL construct_nlmos_wrapper(qs_env, almo_scf_env, virtuals=.FALSE.)
 
          IF (almo_scf_env%opt_nlmo_pcg%opt_penalty%virtual_nlmos) THEN
             CALL construct_virtuals(almo_scf_env)
             CALL construct_nlmos_wrapper(qs_env, almo_scf_env, virtuals=.TRUE.)
-         END IF
+         ENDIF
 
          IF (almo_scf_env%opt_nlmo_pcg%opt_penalty%compactification_filter_start .GT. 0.0_dp) THEN
             CALL nlmo_compactification(qs_env, almo_scf_env, almo_scf_env%matrix_t)
-         END IF
+         ENDIF
 
-      END IF
+      ENDIF
 
    END SUBROUTINE construct_nlmos
 
@@ -1760,7 +1775,7 @@ CONTAINS
                                           virtuals=virtuals, &
                                           eps_filter=almo_scf_env%eps_filter)
 
-         END IF
+         ENDIF
 
          det_diff = prev_determinant - almo_scf_env%overlap_determinant
          almo_scf_env%opt_nlmo_pcg%opt_penalty%penalty_strength = &
@@ -1769,10 +1784,10 @@ CONTAINS
 
          IF (det_diff < almo_scf_env%opt_nlmo_pcg%opt_penalty%determinant_tolerance) THEN
             EXIT
-         END IF
+         ENDIF
          prev_determinant = almo_scf_env%overlap_determinant
 
-      END DO
+      ENDDO
 
    END SUBROUTINE construct_nlmos_wrapper
 
@@ -1900,7 +1915,7 @@ CONTAINS
          CALL dbcsr_release(tempVV1)
          CALL dbcsr_release(tempVV2)
 
-      END DO
+      ENDDO
 
    END SUBROUTINE construct_virtuals
 
@@ -1920,8 +1935,10 @@ CONTAINS
       TYPE(dbcsr_type), ALLOCATABLE, DIMENSION(:), &
          INTENT(IN)                                      :: matrix
 
-      INTEGER :: iblock_col, iblock_col_size, iblock_row, iblock_row_size, icol, irow, ispin, &
-         Ncols, Nrows, nspins, para_group_handle, unit_nr
+      INTEGER                                            :: iblock_col, iblock_col_size, iblock_row, &
+                                                            iblock_row_size, icol, irow, ispin, &
+                                                            Ncols, Nrows, nspins, para_group, &
+                                                            unit_nr
       LOGICAL                                            :: element_by_element
       REAL(KIND=dp)                                      :: energy, eps_local, eps_start, &
                                                             max_element, spin_factor
@@ -1930,15 +1947,14 @@ CONTAINS
       TYPE(cp_logger_type), POINTER                      :: logger
       TYPE(dbcsr_iterator_type)                          :: iter
       TYPE(dbcsr_type), ALLOCATABLE, DIMENSION(:)        :: matrix_p_tmp, matrix_t_tmp
-      TYPE(mp_comm_type)                                 :: para_group
 
       ! define the output_unit
       logger => cp_get_default_logger()
-      IF (logger%para_env%is_source()) THEN
+      IF (logger%para_env%ionode) THEN
          unit_nr = cp_logger_get_default_unit_nr(logger, local=.TRUE.)
       ELSE
          unit_nr = -1
-      END IF
+      ENDIF
 
       nspins = SIZE(matrix)
       element_by_element = .FALSE.
@@ -1947,7 +1963,7 @@ CONTAINS
          spin_factor = 2.0_dp
       ELSE
          spin_factor = 1.0_dp
-      END IF
+      ENDIF
 
       ALLOCATE (matrix_t_tmp(nspins))
       ALLOCATE (matrix_p_tmp(nspins))
@@ -1967,7 +1983,7 @@ CONTAINS
                            matrix_type=dbcsr_type_no_symmetry)
          CALL dbcsr_copy(matrix_p_tmp(ispin), almo_scf_env%matrix_p(ispin))
 
-      END DO
+      ENDDO
 
       IF (unit_nr > 0) THEN
          WRITE (unit_nr, *)
@@ -1975,7 +1991,7 @@ CONTAINS
             "Energy dependence on the (block-by-block) filtering of the NLMO coefficients"
          IF (unit_nr > 0) WRITE (unit_nr, '(T2,A13,A20,A20,A25)') &
             "EPS filter", "Occupation Alpha", "Occupation Beta", "Energy"
-      END IF
+      ENDIF
 
       eps_start = almo_scf_env%opt_nlmo_pcg%opt_penalty%compactification_filter_start
       eps_local = MAX(eps_start, 10E-14_dp)
@@ -2001,8 +2017,8 @@ CONTAINS
                            data_p(irow, icol) = 0.0_dp
                         ELSE
                            retained(ispin) = retained(ispin) + 1
-                        END IF
-                     END DO
+                        ENDIF
+                     ENDDO
 
                   ELSE ! rows are blocked
 
@@ -2010,29 +2026,28 @@ CONTAINS
                      DO irow = 1, iblock_row_size
                         IF (ABS(data_p(irow, icol)) .GT. max_element) THEN
                            max_element = ABS(data_p(irow, icol))
-                        END IF
-                     END DO
+                        ENDIF
+                     ENDDO
                      IF (max_element .LT. eps_local) THEN
                         DO irow = 1, iblock_row_size
                            data_p(irow, icol) = 0.0_dp
-                        END DO
+                        ENDDO
                      ELSE
                         retained(ispin) = retained(ispin) + iblock_row_size
-                     END IF
+                     ENDIF
 
-                  END IF ! block rows?
-               END DO ! icol
+                  ENDIF ! block rows?
+               ENDDO ! icol
 
-            END DO ! iterator
+            ENDDO ! iterator
             CALL dbcsr_iterator_stop(iter)
             CALL dbcsr_finalize(matrix_t_tmp(ispin))
             CALL dbcsr_filter(matrix_t_tmp(ispin), eps_local)
 
-            CALL dbcsr_get_info(matrix_t_tmp(ispin), group=para_group_handle, &
+            CALL dbcsr_get_info(matrix_t_tmp(ispin), group=para_group, &
                                 nfullrows_total=Nrows, &
                                 nfullcols_total=Ncols)
-            CALL para_group%set_handle(para_group_handle)
-            CALL para_group%sum(retained(ispin))
+            CALL mp_sum(retained(ispin), para_group)
 
             !devide by the total no. elements
             occ(ispin) = retained(ispin)/Nrows/Ncols
@@ -2059,7 +2074,7 @@ CONTAINS
             ! compute dm from the projector(s)
             CALL dbcsr_scale(matrix_p_tmp(ispin), spin_factor)
 
-         END DO
+         ENDDO
 
          ! the KS matrix is updated outside the spin loop
          CALL almo_dm_to_almo_ks(qs_env, &
@@ -2075,14 +2090,14 @@ CONTAINS
 
          eps_local = 2.0_dp*eps_local
 
-      END DO
+      ENDDO
 
       DO ispin = 1, nspins
 
          CALL dbcsr_release(matrix_t_tmp(ispin))
          CALL dbcsr_release(matrix_p_tmp(ispin))
 
-      END DO
+      ENDDO
 
       DEALLOCATE (matrix_t_tmp)
       DEALLOCATE (matrix_p_tmp)
@@ -2110,7 +2125,7 @@ CONTAINS
       TYPE(cp_fm_type), POINTER                          :: mo_coeff
       TYPE(dbcsr_p_type), DIMENSION(:), POINTER          :: matrix_w
       TYPE(dbcsr_type), ALLOCATABLE, DIMENSION(:)        :: matrix_t_processed
-      TYPE(mo_set_type), DIMENSION(:), POINTER           :: mos
+      TYPE(mo_set_p_type), DIMENSION(:), POINTER         :: mos
       TYPE(qs_scf_env_type), POINTER                     :: scf_env
 
       CALL timeset(routineN, handle)
@@ -2151,9 +2166,9 @@ CONTAINS
                                    eps_lanczos=almo_scf_env%eps_lanczos, &
                                    max_iter_lanczos=almo_scf_env%max_iter_lanczos, &
                                    smear=almo_scf_env%smear)
-         END IF
+         ENDIF
 
-      END DO
+      ENDDO
 
       !! RS-WARNING: If smearing ALMO is requested, rescaled fully-occupied orbitals are returned to QS
       !! RS-WARNING: Beware that QS will not be informed about electronic entropy.
@@ -2173,18 +2188,25 @@ CONTAINS
       DO ispin = 1, almo_scf_env%nspins
          ! Currently only fm version of mo_set is usable.
          ! First transform the matrix_t to fm version
-         CALL get_mo_set(mos(ispin), mo_coeff=mo_coeff)
+         CALL get_mo_set(mos(ispin)%mo_set, mo_coeff=mo_coeff)
          CALL copy_dbcsr_to_fm(matrix_t_processed(ispin), mo_coeff)
          CALL dbcsr_release(matrix_t_processed(ispin))
-      END DO
+      ENDDO
       DO ispin = 1, almo_scf_env%nspins
          CALL dbcsr_release(matrix_t_processed(ispin))
-      END DO
+      ENDDO
       DEALLOCATE (matrix_t_processed)
 
       ! calculate post scf properties
       ! CALL almo_post_scf_compute_properties(qs_env, almo_scf_env)
       CALL almo_post_scf_compute_properties(qs_env)
+
+      ! In normal scf procedure this is done by scf,
+      ! but it's not called by ALMO
+      ! best to release it somewhere else
+      IF (ASSOCIATED(scf_env)) THEN
+         CALL scf_env_release(scf_env)
+      ENDIF
 
       ! compute the W matrix if associated
       IF (almo_scf_env%calc_forces) THEN
@@ -2193,8 +2215,8 @@ CONTAINS
             CALL calculate_w_matrix_almo(matrix_w, almo_scf_env)
          ELSE
             CPABORT("Matrix W is needed but not associated")
-         END IF
-      END IF
+         ENDIF
+      ENDIF
 
       CALL timestop(handle)
 
@@ -2264,7 +2286,7 @@ CONTAINS
                                  symmetry_new=dbcsr_type_symmetric, &
                                  spin_key=0, &
                                  init_domains=.TRUE.)
-      END IF
+      ENDIF
 
       ! MO coeff matrices and their derivatives
       ALLOCATE (almo_scf_env%matrix_t_blk(nspins))
@@ -2379,7 +2401,7 @@ CONTAINS
          CALL dbcsr_create(almo_scf_env%matrix_sigma_sqrt_inv(ispin), &
                            template=almo_scf_env%matrix_sigma(ispin), &
                            matrix_type=dbcsr_type_no_symmetry)
-      END DO
+      ENDDO
 
       ! create virtual orbitals if necessary
       IF (almo_scf_env%need_virtuals) THEN
@@ -2408,7 +2430,7 @@ CONTAINS
             ALLOCATE (almo_scf_env%opt_k_t_dd(nspins))
             ALLOCATE (almo_scf_env%opt_k_t_rr(nspins))
             ALLOCATE (almo_scf_env%opt_k_denom(nspins))
-         END IF
+         ENDIF
 
          DO ispin = 1, nspins
             CALL matrix_almo_create(matrix_new=almo_scf_env%matrix_v_full_blk(ispin), &
@@ -2588,10 +2610,10 @@ CONTAINS
                                        spin_key=ispin, &
                                        init_domains=.FALSE.)
 
-            END IF ! end need_discarded_virtuals
+            ENDIF ! end need_discarded_virtuals
 
-         END DO ! spin
-      END IF
+         ENDDO ! spin
+      ENDIF
 
       ! create matrices of orbital energies if necessary
       IF (almo_scf_env%need_orbital_energies) THEN
@@ -2614,8 +2636,8 @@ CONTAINS
                                     symmetry_new=dbcsr_type_no_symmetry, &
                                     spin_key=ispin, &
                                     init_domains=.FALSE.)
-         END DO
-      END IF
+         ENDDO
+      ENDIF
 
       ! Density and KS matrices
       ALLOCATE (almo_scf_env%matrix_p(nspins))
@@ -2636,7 +2658,7 @@ CONTAINS
             CALL dbcsr_create(almo_scf_env%matrix_ks_0deloc(ispin), &
                               template=almo_scf_env%matrix_s(1), &
                               matrix_type=dbcsr_type_symmetric)
-         END IF
+         ENDIF
          CALL matrix_almo_create(matrix_new=almo_scf_env%matrix_p_blk(ispin), &
                                  matrix_qs=matrix_s0, &
                                  almo_scf_env=almo_scf_env, &
@@ -2653,7 +2675,7 @@ CONTAINS
                                  symmetry_new=dbcsr_type_symmetric, &
                                  spin_key=ispin, &
                                  init_domains=.TRUE.)
-      END DO
+      ENDDO
 
       CALL timestop(handle)
 
@@ -2680,11 +2702,11 @@ CONTAINS
 
       ! get a useful output_unit
       logger => cp_get_default_logger()
-      IF (logger%para_env%is_source()) THEN
+      IF (logger%para_env%ionode) THEN
          unit_nr = cp_logger_get_default_unit_nr(logger, local=.TRUE.)
       ELSE
          unit_nr = -1
-      END IF
+      ENDIF
 
       ! release matrices
       CALL dbcsr_release(almo_scf_env%matrix_s(1))
@@ -2694,7 +2716,7 @@ CONTAINS
          CALL dbcsr_release(almo_scf_env%matrix_s_blk_sqrt(1))
       ELSE IF (almo_scf_env%almo_update_algorithm .EQ. almo_scf_dm_sign) THEN
          CALL dbcsr_release(almo_scf_env%matrix_s_blk_inv(1))
-      END IF
+      ENDIF
       DO ispin = 1, almo_scf_env%nspins
          CALL dbcsr_release(almo_scf_env%quench_t(ispin))
          CALL dbcsr_release(almo_scf_env%quench_t_blk(ispin))
@@ -2715,7 +2737,7 @@ CONTAINS
          CALL dbcsr_release(almo_scf_env%matrix_ks_blk(ispin))
          IF (almo_scf_env%need_previous_ks) THEN
             CALL dbcsr_release(almo_scf_env%matrix_ks_0deloc(ispin))
-         END IF
+         ENDIF
          IF (almo_scf_env%need_virtuals) THEN
             CALL dbcsr_release(almo_scf_env%matrix_v_blk(ispin))
             CALL dbcsr_release(almo_scf_env%matrix_v_full_blk(ispin))
@@ -2741,13 +2763,13 @@ CONTAINS
                CALL dbcsr_release(almo_scf_env%opt_k_t_dd(ispin))
                CALL dbcsr_release(almo_scf_env%opt_k_t_rr(ispin))
                CALL dbcsr_release(almo_scf_env%opt_k_denom(ispin))
-            END IF
-         END IF
+            ENDIF
+         ENDIF
          IF (almo_scf_env%need_orbital_energies) THEN
             CALL dbcsr_release(almo_scf_env%matrix_eoo(ispin))
             CALL dbcsr_release(almo_scf_env%matrix_evv_full(ispin))
-         END IF
-      END DO
+         ENDIF
+      ENDDO
 
       ! deallocate matrices
       DEALLOCATE (almo_scf_env%matrix_p)
@@ -2792,15 +2814,15 @@ CONTAINS
             DEALLOCATE (almo_scf_env%opt_k_t_dd)
             DEALLOCATE (almo_scf_env%opt_k_t_rr)
             DEALLOCATE (almo_scf_env%opt_k_denom)
-         END IF
-      END IF
+         ENDIF
+      ENDIF
       IF (almo_scf_env%need_previous_ks) THEN
          DEALLOCATE (almo_scf_env%matrix_ks_0deloc)
-      END IF
+      ENDIF
       IF (almo_scf_env%need_orbital_energies) THEN
          DEALLOCATE (almo_scf_env%matrix_eoo)
          DEALLOCATE (almo_scf_env%matrix_evv_full)
-      END IF
+      ENDIF
 
       ! clean up other variables
       DO ispin = 1, almo_scf_env%nspins
@@ -2813,7 +2835,7 @@ CONTAINS
          CALL release_submatrices(almo_scf_env%domain_t(:, ispin))
          CALL release_submatrices(almo_scf_env%domain_err(:, ispin))
          CALL release_submatrices(almo_scf_env%domain_r_down_up(:, ispin))
-      END DO
+      ENDDO
       DEALLOCATE (almo_scf_env%domain_preconditioner)
       DEALLOCATE (almo_scf_env%domain_s_inv)
       DEALLOCATE (almo_scf_env%domain_s_sqrt_inv)
@@ -2825,7 +2847,7 @@ CONTAINS
       DO ispin = 1, almo_scf_env%nspins
          DEALLOCATE (almo_scf_env%domain_map(ispin)%pairs)
          DEALLOCATE (almo_scf_env%domain_map(ispin)%index1)
-      END DO
+      ENDDO
       DEALLOCATE (almo_scf_env%domain_map)
       DEALLOCATE (almo_scf_env%domain_index_of_ao)
       DEALLOCATE (almo_scf_env%domain_index_of_atom)
@@ -2849,7 +2871,7 @@ CONTAINS
       DEALLOCATE (almo_scf_env%domain_index_of_ao_block)
       DEALLOCATE (almo_scf_env%domain_index_of_mo_block)
 
-      CALL mp_para_env_release(almo_scf_env%para_env)
+      CALL cp_para_env_release(almo_scf_env%para_env)
       CALL cp_blacs_env_release(almo_scf_env%blacs_env)
 
       CALL timestop(handle)

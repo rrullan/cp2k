@@ -1,6 +1,6 @@
 !--------------------------------------------------------------------------------------------------!
 !   CP2K: A general program to perform molecular dynamics simulations                              !
-!   Copyright 2000-2024 CP2K developers group <https://cp2k.org>                                   !
+!   Copyright 2000-2020 CP2K developers group <https://cp2k.org>                                   !
 !                                                                                                  !
 !   SPDX-License-Identifier: GPL-2.0-or-later                                                      !
 !--------------------------------------------------------------------------------------------------!
@@ -50,7 +50,7 @@ MODULE almo_scf_qs
                                               do_bondparm_covalent,&
                                               do_bondparm_vdw
    USE kinds,                           ONLY: dp
-   USE message_passing,                 ONLY: mp_comm_type
+   USE message_passing,                 ONLY: mp_allgather
    USE molecule_types,                  ONLY: get_molecule_set_info,&
                                               molecule_type
    USE particle_types,                  ONLY: particle_type
@@ -63,9 +63,8 @@ MODULE almo_scf_qs
                                               qs_ks_env_type,&
                                               set_ks_env
    USE qs_mo_types,                     ONLY: allocate_mo_set,&
-                                              deallocate_mo_set,&
                                               init_mo_set,&
-                                              mo_set_type
+                                              mo_set_p_type
    USE qs_neighbor_list_types,          ONLY: get_iterator_info,&
                                               neighbor_list_iterate,&
                                               neighbor_list_iterator_create,&
@@ -171,7 +170,7 @@ CONTAINS
             CALL dbcsr_distribution_get(dist_qs, row_dist=blk_distr)
          ELSE !columns
             CALL dbcsr_distribution_get(dist_qs, col_dist=blk_distr)
-         END IF
+         ENDIF
 
          IF (size_keys(dimen) == almo_mat_dim_aobasis) THEN ! this dimension is AO
 
@@ -191,14 +190,14 @@ CONTAINS
                   block_sizes_new(almo_scf_env%domain_index_of_atom(iatom)) = &
                      block_sizes_new(almo_scf_env%domain_index_of_atom(iatom)) + &
                      blk_sizes(iatom)
-               END DO
+               ENDDO
                DO imol = 1, nmols
                   distr_new_array(imol) = &
                      blk_distr(almo_scf_env%first_atom_of_domain(imol))
-               END DO
+               ENDDO
             ELSE
                CPABORT("Illegal distribution")
-            END IF
+            ENDIF
 
          ELSE ! this dimension is not AO
 
@@ -218,7 +217,7 @@ CONTAINS
                      !block_sizes_new(:)=almo_scf_env%nocc_of_atom(:,spin_key)
                   ELSE IF (size_keys(dimen) == almo_mat_dim_virt) THEN
                      !block_sizes_new(:)=almo_scf_env%nvirt_of_atom(:,spin_key)
-                  END IF
+                  ENDIF
                   ! molecular clustering of MOs
                ELSE IF (almo_scf_env%mat_distr_mos == almo_mat_distr_molecular) THEN
                   nlength = nmols
@@ -234,16 +233,16 @@ CONTAINS
                      block_sizes_new(:) = almo_scf_env%nvirt_full_of_domain(:, spin_key)
                   ELSE IF (size_keys(dimen) == almo_mat_dim_virt) THEN
                      block_sizes_new(:) = almo_scf_env%nvirt_of_domain(:, spin_key)
-                  END IF
+                  ENDIF
                ELSE
                   CPABORT("Illegal distribution")
-               END IF
+               ENDIF
 
             ELSE
 
                CPABORT("Illegal dimension")
 
-            END IF ! end choosing dim size (occ, virt)
+            ENDIF ! end choosing dim size (occ, virt)
 
             ! distribution for MOs is copied from AOs
             ALLOCATE (distr_new_array(nlength))
@@ -255,9 +254,9 @@ CONTAINS
                DO imol = 1, nmols
                   distr_new_array(imol) = &
                      blk_distr(almo_scf_env%first_atom_of_domain(imol))
-               END DO
-            END IF
-         END IF ! end choosing dimension size (AOs vs .NOT.AOs)
+               ENDDO
+            ENDIF
+         ENDIF ! end choosing dimension size (AOs vs .NOT.AOs)
 
          ! create final arrays
          IF (dimen == 1) THEN !rows
@@ -266,8 +265,8 @@ CONTAINS
          ELSE !columns
             col_sizes_new => block_sizes_new
             col_distr_new => distr_new_array
-         END IF
-      END DO ! both rows and columns are done
+         ENDIF
+      ENDDO ! both rows and columns are done
 
       ! Create the distribution
       CALL dbcsr_distribution_new(dist_new, template=dist_qs, &
@@ -361,7 +360,7 @@ CONTAINS
                one_dim_is_mo = .FALSE.
                DO dimen = 1, 2 ! 1 - row, 2 - column dimension
                   IF (size_keys(dimen) == almo_mat_dim_occ) one_dim_is_mo = .TRUE.
-               END DO
+               ENDDO
                IF (one_dim_is_mo) THEN
                   IF (almo_scf_env%nocc_of_domain(row, spin_key) == 0) active = .FALSE.
                END IF
@@ -369,7 +368,7 @@ CONTAINS
                one_dim_is_mo = .FALSE.
                DO dimen = 1, 2
                   IF (size_keys(dimen) == almo_mat_dim_virt) one_dim_is_mo = .TRUE.
-               END DO
+               ENDDO
                IF (one_dim_is_mo) THEN
                   IF (almo_scf_env%nvirt_of_domain(row, spin_key) == 0) active = .FALSE.
                END IF
@@ -377,7 +376,7 @@ CONTAINS
                one_dim_is_mo = .FALSE.
                DO dimen = 1, 2
                   IF (size_keys(dimen) == almo_mat_dim_virt_disc) one_dim_is_mo = .TRUE.
-               END DO
+               ENDDO
                IF (one_dim_is_mo) THEN
                   IF (almo_scf_env%nvirt_disc_of_domain(row, spin_key) == 0) active = .FALSE.
                END IF
@@ -385,7 +384,7 @@ CONTAINS
                one_dim_is_mo = .FALSE.
                DO dimen = 1, 2
                   IF (size_keys(dimen) == almo_mat_dim_virt_full) one_dim_is_mo = .TRUE.
-               END DO
+               ENDDO
                IF (one_dim_is_mo) THEN
                   IF (almo_scf_env%nvirt_full_of_domain(row, spin_key) == 0) active = .FALSE.
                END IF
@@ -395,13 +394,13 @@ CONTAINS
                   CALL dbcsr_reserve_block2d(matrix_new, iblock_row, iblock_col, p_new_block)
                   CPASSERT(ASSOCIATED(p_new_block))
                   p_new_block(:, :) = 1.0_dp
-               END IF
+               ENDIF
 
-            END IF ! mynode
-         END DO
+            ENDIF ! mynode
+         ENDDO
          ! end lnear-scaling replacement
 
-      END IF ! init_domains
+      ENDIF ! init_domains
 
       CALL dbcsr_finalize(matrix_new)
 
@@ -547,16 +546,16 @@ CONTAINS
                               template=matrix_qs_s(1)%matrix)
             CALL cp_dbcsr_alloc_block_from_nbl(matrix_qs_ks(ispin)%matrix, sab_orb)
             CALL dbcsr_set(matrix_qs_ks(ispin)%matrix, 0.0_dp)
-         END DO
+         ENDDO
          CALL set_ks_env(ks_env, matrix_ks=matrix_qs_ks)
-      END IF
+      ENDIF
 
       ! copy to ALMO
       DO ispin = 1, nspin
          CALL matrix_qs_to_almo(matrix_qs_ks(ispin)%matrix, &
                                 matrix_ks(ispin), mat_distr_aos, .FALSE.)
          CALL dbcsr_filter(matrix_ks(ispin), eps_filter)
-      END DO
+      ENDDO
 
       CALL timestop(handle)
 
@@ -577,18 +576,17 @@ CONTAINS
 
       CHARACTER(len=*), PARAMETER                        :: routineN = 'construct_qs_mos'
 
-      INTEGER                                            :: handle, ispin, ncol_fm, nrow_fm
+      INTEGER                                            :: handle,ispin, ncol_fm, nrow_fm
       TYPE(cp_fm_struct_type), POINTER                   :: fm_struct_tmp
-      TYPE(cp_fm_type)                                   :: mo_fm_copy
+      TYPE(cp_fm_type), POINTER                          :: mo_fm_copy
       TYPE(dft_control_type), POINTER                    :: dft_control
-      TYPE(mo_set_type), DIMENSION(:), POINTER           :: mos
+      TYPE(mo_set_p_type), DIMENSION(:), POINTER         :: mos
       TYPE(qs_scf_env_type), POINTER                     :: scf_env
 
       CALL timeset(routineN, handle)
 
       ! create and init scf_env (this is necessary to return MOs to qs)
-      NULLIFY (mos, fm_struct_tmp, scf_env)
-      ALLOCATE (scf_env)
+      NULLIFY (mos, mo_fm_copy, fm_struct_tmp, scf_env)
       CALL scf_env_create(scf_env)
 
       !CALL qs_scf_env_initialize(qs_env, scf_env)
@@ -599,18 +597,34 @@ CONTAINS
 
       ! allocate and init mo_set
       DO ispin = 1, almo_scf_env%nspins
-
-         ! Currently only fm version of mo_set is usable.
-         ! First transform the matrix_t to fm version
-         ! Empty the containers to prevent memory leaks
-         CALL deallocate_mo_set(mos(ispin))
-         CALL allocate_mo_set(mo_set=mos(ispin), &
+        
+         IF (almo_scf_env%nspins .EQ. 1) THEN 
+                 CALL allocate_mo_set(mo_set=mos(ispin)%mo_set, &
                               nao=nrow_fm, &
                               nmo=ncol_fm, &
                               nelectron=almo_scf_env%nelectrons_total, &
                               n_el_f=REAL(almo_scf_env%nelectrons_total, dp), &
                               maxocc=2.0_dp, &
                               flexible_electron_count=dft_control%relax_multiplicity)
+         ELSEIF (almo_scf_env%nspins .EQ. 2) THEN
+                 CALL allocate_mo_set(mo_set=mos(ispin)%mo_set, &
+                              nao=nrow_fm, &
+                              nmo=ncol_fm, &
+                              nelectron=almo_scf_env%nelectrons_total, &
+                              n_el_f=REAL(almo_scf_env%nelectrons_total, dp), &
+                              maxocc=1.0_dp, &
+                              flexible_electron_count=dft_control%relax_multiplicity)
+         ENDIF
+
+         ! Currently only fm version of mo_set is usable.
+         ! First transform the matrix_t to fm version
+         !CALL allocate_mo_set(mo_set=mos(ispin)%mo_set, &
+         !                     nao=nrow_fm, &
+         !                     nmo=ncol_fm, &
+         !                     nelectron=almo_scf_env%nelectrons_total, &
+         !                     n_el_f=REAL(almo_scf_env%nelectrons_total, dp), &
+         !                     maxocc, &
+         !                     flexible_electron_count=dft_control%relax_multiplicity)
 
          CALL cp_fm_struct_create(fm_struct_tmp, nrow_global=nrow_fm, ncol_global=ncol_fm, &
                                   context=almo_scf_env%blacs_env, &
@@ -620,7 +634,7 @@ CONTAINS
          CALL cp_fm_struct_release(fm_struct_tmp)
          !CALL copy_dbcsr_to_fm(almo_scf_env%matrix_t(ispin), mo_fm_copy)
 
-         CALL init_mo_set(mos(ispin), fm_ref=mo_fm_copy, name='fm_mo')
+         CALL init_mo_set(mos(ispin)%mo_set, fm_ref=mo_fm_copy, name='fm_mo')
 
          CALL cp_fm_release(mo_fm_copy)
 
@@ -705,13 +719,13 @@ CONTAINS
          smearing = smear
       ELSE
          smearing = .FALSE.
-      END IF
+      ENDIF
 
       IF (PRESENT(kTS_sum)) THEN
          entropic_term = kTS_sum
       ELSE
          entropic_term = 0.0_dp
-      END IF
+      ENDIF
 
       NULLIFY (energy)
       CALL get_qs_env(qs_env, energy=energy)
@@ -770,13 +784,13 @@ CONTAINS
          smearing = smear
       ELSE
          smearing = .FALSE.
-      END IF
+      ENDIF
 
       IF (PRESENT(kTS_sum)) THEN
          entropic_term = kTS_sum
       ELSE
          entropic_term = 0.0_dp
-      END IF
+      ENDIF
 
       ! update KS matrix in the QS env
       CALL almo_dm_to_qs_ks(qs_env, matrix_p, energy_total, mat_distr_aos, &
@@ -792,7 +806,7 @@ CONTAINS
                                 matrix_ks(ispin), &
                                 mat_distr_aos, .FALSE.)
          CALL dbcsr_filter(matrix_ks(ispin), eps_filter)
-      END DO
+      ENDDO
 
       CALL timestop(handle)
 
@@ -820,11 +834,11 @@ CONTAINS
          qs_energy%singles_corr = energy_singles_corr
       ELSE
          qs_energy%singles_corr = 0.0_dp
-      END IF
+      ENDIF
 
       IF (PRESENT(energy)) THEN
          qs_energy%total = energy
-      END IF
+      ENDIF
 
       qs_energy%total = qs_energy%total + qs_energy%singles_corr
 
@@ -871,7 +885,6 @@ CONTAINS
       TYPE(dbcsr_p_type), DIMENSION(:), POINTER          :: matrix_s
       TYPE(dbcsr_type)                                   :: matrix_s_sym
       TYPE(molecule_type), DIMENSION(:), POINTER         :: molecule_set
-      TYPE(mp_comm_type)                                 :: group
       TYPE(neighbor_list_iterator_p_type), &
          DIMENSION(:), POINTER                           :: nl_iterator, nl_iterator2
       TYPE(neighbor_list_set_p_type), DIMENSION(:), &
@@ -882,11 +895,11 @@ CONTAINS
 
       ! get a useful output_unit
       logger => cp_get_default_logger()
-      IF (logger%para_env%is_source()) THEN
+      IF (logger%para_env%ionode) THEN
          unit_nr = cp_logger_get_default_unit_nr(logger, local=.TRUE.)
       ELSE
          unit_nr = -1
-      END IF
+      ENDIF
 
       ndomains = almo_scf_env%ndomains
 
@@ -905,7 +918,7 @@ CONTAINS
          CALL get_molecule_set_info(molecule_set, &
                                     mol_to_first_atom=first_atom_of_molecule, &
                                     mol_to_last_atom=last_atom_of_molecule)
-      END IF
+      ENDIF
 
       ! create a symmetrized copy of the ao overlap
       CALL dbcsr_create(matrix_s_sym, &
@@ -918,13 +931,13 @@ CONTAINS
       ELSE
          CALL dbcsr_desymmetrize(almo_scf_env%matrix_s(1), &
                                  matrix_s_sym)
-      END IF
+      ENDIF
 
       ALLOCATE (almo_scf_env%quench_t(almo_scf_env%nspins))
       ALLOCATE (almo_scf_env%domain_map(almo_scf_env%nspins))
 
-      !DO ispin=1,almo_scf_env%nspins
-      ispin = 1
+      DO ispin=1,almo_scf_env%nspins
+      !ispin = 1
 
       ! create the sparsity template for the occupied orbitals
       CALL matrix_almo_create(matrix_new=almo_scf_env%quench_t(ispin), &
@@ -945,7 +958,6 @@ CONTAINS
 
       CALL dbcsr_get_info(almo_scf_env%quench_t(ispin), distribution=dist)
       CALL dbcsr_distribution_get(dist, numnodes=nNodes, group=GroupID, mynode=mynode)
-      CALL group%set_handle(groupid)
 
       ! create global atom neighbor list from the local lists
       ! first, calculate number of local pairs
@@ -974,25 +986,25 @@ CONTAINS
          local_list(2*local_list_length + 1) = iatom2
          local_list(2*local_list_length + 2) = jatom2
          local_list_length = local_list_length + 1
-      END DO ! end loop over pairs of atoms
+      ENDDO ! end loop over pairs of atoms
       CALL neighbor_list_iterator_release(nl_iterator2)
 
       ! third, communicate local length to the other nodes
       ALLOCATE (list_length_cpu(nNodes), list_offset_cpu(nNodes))
-      CALL group%allgather(2*local_list_length, list_length_cpu)
+      CALL mp_allgather(2*local_list_length, list_length_cpu, GroupID)
 
       ! fourth, create a global list
       list_offset_cpu(1) = 0
       DO iNode = 2, nNodes
          list_offset_cpu(iNode) = list_offset_cpu(iNode - 1) + &
                                   list_length_cpu(iNode - 1)
-      END DO
+      ENDDO
       global_list_length = list_offset_cpu(nNodes) + list_length_cpu(nNodes)
 
       ! fifth, communicate all list data
       ALLOCATE (global_list(global_list_length))
-      CALL group%allgatherv(local_list, global_list, &
-                            list_length_cpu, list_offset_cpu)
+      CALL mp_allgather(local_list, global_list, &
+                        list_length_cpu, list_offset_cpu, GroupID)
       DEALLOCATE (list_length_cpu, list_offset_cpu)
       DEALLOCATE (local_list)
 
@@ -1010,8 +1022,8 @@ CONTAINS
          ! add j,i with i,j
          IF (idomain2 .NE. jdomain2) THEN
             current_number_neighbors(jdomain2) = current_number_neighbors(jdomain2) + 1
-         END IF
-      END DO
+         ENDIF
+      ENDDO
       max_domain_neighbors = MAXVAL(current_number_neighbors)
 
       ! use the global atom neighbor list to create a global domain neighbor list
@@ -1019,7 +1031,7 @@ CONTAINS
       current_number_neighbors(:) = 1
       DO ipair = 1, ndomains
          domain_neighbor_list_excessive(ipair, 1) = ipair
-      END DO
+      ENDDO
       DO ipair = 1, global_list_length
          iatom2 = global_list(2*(ipair - 1) + 1)
          jatom2 = global_list(2*(ipair - 1) + 2)
@@ -1030,8 +1042,8 @@ CONTAINS
             IF (domain_neighbor_list_excessive(idomain2, ineighbor) .EQ. jdomain2) THEN
                already_listed = .TRUE.
                EXIT
-            END IF
-         END DO
+            ENDIF
+         ENDDO
          IF (.NOT. already_listed) THEN
             ! add to the list
             current_number_neighbors(idomain2) = current_number_neighbors(idomain2) + 1
@@ -1040,9 +1052,9 @@ CONTAINS
             IF (idomain2 .NE. jdomain2) THEN
                current_number_neighbors(jdomain2) = current_number_neighbors(jdomain2) + 1
                domain_neighbor_list_excessive(jdomain2, current_number_neighbors(jdomain2)) = idomain2
-            END IF
-         END IF
-      END DO ! end loop over pairs of atoms
+            ENDIF
+         ENDIF
+      ENDDO ! end loop over pairs of atoms
       DEALLOCATE (global_list)
 
       max_domain_neighbors = MAXVAL(current_number_neighbors)
@@ -1090,14 +1102,14 @@ CONTAINS
                         ! ao domains are molecular / electron groups are molecular
                         IF (domain_row == domain_col) THEN
                            block_active = .TRUE.
-                        END IF
+                        ENDIF
 
                      ELSE ! ao domains are atomic
 
                         ! ao domains are atomic / electron groups are molecular
                         CPABORT("Illegal: atomic domains and molecular groups")
 
-                     END IF
+                     ENDIF
 
                   ELSE ! electron groups are atomic
 
@@ -1112,11 +1124,11 @@ CONTAINS
                         ! ao domains are atomic / electron groups are atomic
                         IF (domain_row == domain_col) THEN
                            block_active = .TRUE.
-                        END IF
+                        ENDIF
 
-                     END IF
+                     ENDIF
 
-                  END IF ! end type of electron groups
+                  ENDIF ! end type of electron groups
 
                   IF (block_active) THEN
 
@@ -1128,12 +1140,12 @@ CONTAINS
 
                      IF (domain_map_local_entries .GE. max_domain_neighbors*almo_scf_env%ndomains) THEN
                         CPABORT("weird... max_domain_neighbors is exceeded")
-                     END IF
+                     ENDIF
                      almo_scf_env%domain_map(ispin)%pairs(domain_map_local_entries + 1, 1) = iblock_row
                      almo_scf_env%domain_map(ispin)%pairs(domain_map_local_entries + 1, 2) = iblock_col
                      domain_map_local_entries = domain_map_local_entries + 1
 
-                  END IF
+                  ENDIF
 
                CASE (almo_constraint_ao_overlap)
 
@@ -1154,7 +1166,7 @@ CONTAINS
                            overlap = MAXVAL(ABS(p_new_block))
                         ELSE
                            overlap = 0.0_dp
-                        END IF
+                        ENDIF
 
                      ELSE ! ao domains are atomic
 
@@ -1162,7 +1174,7 @@ CONTAINS
                         ! overlap_between_atom_and_molecule(atom=domain_row,molecule=domain_col)
                         CPABORT("atomic domains and molecular groups - NYI")
 
-                     END IF
+                     ENDIF
 
                   ELSE ! electron groups are atomic
 
@@ -1185,11 +1197,11 @@ CONTAINS
                            overlap = MAXVAL(ABS(p_new_block))
                         ELSE
                            overlap = 0.0_dp
-                        END IF
+                        ENDIF
 
-                     END IF
+                     ENDIF
 
-                  END IF ! end type of electron groups
+                  ENDIF ! end type of electron groups
 
                   s0 = -LOG10(ABS(almo_scf_env%quencher_s0))
                   s1 = -LOG10(ABS(almo_scf_env%quencher_s1))
@@ -1197,16 +1209,16 @@ CONTAINS
                      overlap = -LOG10(ABS(almo_scf_env%eps_filter)) + 100.0_dp
                   ELSE
                      overlap = -LOG10(overlap)
-                  END IF
+                  ENDIF
                   IF (s0 .LT. 0.0_dp) THEN
                      CPABORT("S0 is less than zero")
-                  END IF
+                  ENDIF
                   IF (s1 .LE. 0.0_dp) THEN
                      CPABORT("S1 is less than or equal to zero")
-                  END IF
+                  ENDIF
                   IF (s0 .GE. s1) THEN
                      CPABORT("S0 is greater than or equal to S1")
-                  END IF
+                  ENDIF
 
                   ! Fill in non-zero blocks if AOs are close to the electron center
                   IF (overlap .LT. s1) THEN
@@ -1222,18 +1234,18 @@ CONTAINS
                         p_new_block(:, :) = 1.0_dp/(1.0_dp + EXP(-(s0 - s1)/(s0 - overlap) - (s0 - s1)/(overlap - s1)))
                         !WRITE(*,'(A15,2I7,3F8.3,E11.3)') "INTER-BLOCKS: ",&
                         !   iblock_col, iblock_row, s0, s1, overlap, p_new_block(1,1)
-                     END IF
+                     ENDIF
 
                      IF (ABS(p_new_block(1, 1)) .GT. ABS(almo_scf_env%eps_filter)) THEN
                         IF (domain_map_local_entries .GE. max_domain_neighbors*almo_scf_env%ndomains) THEN
                            CPABORT("weird... max_domain_neighbors is exceeded")
-                        END IF
+                        ENDIF
                         almo_scf_env%domain_map(ispin)%pairs(domain_map_local_entries + 1, 1) = iblock_row
                         almo_scf_env%domain_map(ispin)%pairs(domain_map_local_entries + 1, 2) = iblock_col
                         domain_map_local_entries = domain_map_local_entries + 1
-                     END IF
+                     ENDIF
 
-                  END IF
+                  ENDIF
 
                CASE (almo_constraint_distance)
 
@@ -1264,12 +1276,12 @@ CONTAINS
                                     distance_squared = trial_distance_squared
                                     contact_atom_1 = iatom
                                     contact_atom_2 = jatom
-                                 END IF
-                              END DO ! jatom
-                           END DO ! iatom
+                                 ENDIF
+                              ENDDO ! jatom
+                           ENDDO ! iatom
                            CPASSERT(contact_atom_1 .GT. 0)
                            distance = SQRT(distance_squared)
-                        END IF
+                        ENDIF
 
                      ELSE ! ao domains are atomic
 
@@ -1277,7 +1289,7 @@ CONTAINS
                         !distance_between_atom_and_molecule(atom=domain_row,molecule=domain_col)
                         CPABORT("atomic domains and molecular groups - NYI")
 
-                     END IF
+                     ENDIF
 
                   ELSE ! electron groups are atomic
 
@@ -1297,9 +1309,9 @@ CONTAINS
                         contact_atom_1 = domain_row
                         contact_atom_2 = domain_col
 
-                     END IF
+                     ENDIF
 
-                  END IF ! end type of electron groups
+                  ENDIF ! end type of electron groups
 
                   ! get atomic radii to compute distance cutoff threshold
                   IF (almo_scf_env%quencher_radius_type == do_bondparm_covalent) THEN
@@ -1330,13 +1342,13 @@ CONTAINS
 
                   IF (r0 .LT. 0.0_dp) THEN
                      CPABORT("R0 is less than zero")
-                  END IF
+                  ENDIF
                   IF (r1 .LE. 0.0_dp) THEN
                      CPABORT("R1 is less than or equal to zero")
-                  END IF
+                  ENDIF
                   IF (r0 .GT. r1) THEN
                      CPABORT("R0 is greater than or equal to R1")
-                  END IF
+                  ENDIF
 
                   ! Fill in non-zero blocks if AOs are close to the electron center
                   IF (distance .LT. r1) THEN
@@ -1356,27 +1368,27 @@ CONTAINS
                         !WRITE(*,'(A15,2I7,5F8.3,E11.3)') "INTER-BLOCKS: ",&
                         !   iblock_col, iblock_row, contact1_radius,&
                         !   contact2_radius, r0, r1, distance, p_new_block(1,1)
-                     END IF
+                     ENDIF
 
                      IF (ABS(p_new_block(1, 1)) .GT. ABS(almo_scf_env%eps_filter)) THEN
                         IF (domain_map_local_entries .GE. max_domain_neighbors*almo_scf_env%ndomains) THEN
                            CPABORT("weird... max_domain_neighbors is exceeded")
-                        END IF
+                        ENDIF
                         almo_scf_env%domain_map(ispin)%pairs(domain_map_local_entries + 1, 1) = iblock_row
                         almo_scf_env%domain_map(ispin)%pairs(domain_map_local_entries + 1, 2) = iblock_col
                         domain_map_local_entries = domain_map_local_entries + 1
-                     END IF
+                     ENDIF
 
-                  END IF
+                  ENDIF
 
                CASE DEFAULT
                   CPABORT("Illegal constraint type")
                END SELECT
 
-            END IF ! mynode
+            ENDIF ! mynode
 
-         END DO
-      END DO ! end O(N) loop over pairs
+         ENDDO
+      ENDDO ! end O(N) loop over pairs
 
       DEALLOCATE (domain_neighbor_list)
       DEALLOCATE (current_number_neighbors)
@@ -1391,18 +1403,18 @@ CONTAINS
       nblks = dbcsr_get_num_blocks(almo_scf_env%quench_t(ispin))
       IF (nblks .NE. domain_map_local_entries) THEN
          CPABORT("number of blocks is wrong")
-      END IF
+      ENDIF
 
       ! first, communicate map sizes on the other nodes
       ALLOCATE (domain_entries_cpu(nNodes), offset_for_cpu(nNodes))
-      CALL group%allgather(2*domain_map_local_entries, domain_entries_cpu)
+      CALL mp_allgather(2*domain_map_local_entries, domain_entries_cpu, GroupID)
 
       ! second, create
       offset_for_cpu(1) = 0
       DO iNode = 2, nNodes
          offset_for_cpu(iNode) = offset_for_cpu(iNode - 1) + &
                                  domain_entries_cpu(iNode - 1)
-      END DO
+      ENDDO
       global_entries = offset_for_cpu(nNodes) + domain_entries_cpu(nNodes)
 
       ! communicate all entries
@@ -1411,9 +1423,9 @@ CONTAINS
       DO ientry = 1, domain_map_local_entries
          domain_map_local(2*(ientry - 1) + 1) = almo_scf_env%domain_map(ispin)%pairs(ientry, 1)
          domain_map_local(2*ientry) = almo_scf_env%domain_map(ispin)%pairs(ientry, 2)
-      END DO
-      CALL group%allgatherv(domain_map_local, domain_map_global, &
-                            domain_entries_cpu, offset_for_cpu)
+      ENDDO
+      CALL mp_allgather(domain_map_local, domain_map_global, &
+                        domain_entries_cpu, offset_for_cpu, GroupID)
       DEALLOCATE (domain_entries_cpu, offset_for_cpu)
       DEALLOCATE (domain_map_local)
 
@@ -1449,7 +1461,7 @@ CONTAINS
                DEALLOCATE (domain_grid)
                max_neig = max_neig*2
                CYCLE max_neig_loop
-            END IF
+            ENDIF
             ! for the current center loop over the collected neighbors
             ! to insert the current record in a numerical order
             delayed_increment = .FALSE.
@@ -1467,18 +1479,18 @@ CONTAINS
                      domain_grid(grid1, igrid) = ineig
                      ! increase the record counter but do it outside the loop
                      delayed_increment = .TRUE.
-                  END IF
-               END IF
-            END DO
+                  ENDIF
+               ENDIF
+            ENDDO
             IF (delayed_increment) THEN
                domain_grid(grid1, 0) = domain_grid(grid1, 0) + 1
             ELSE
                ! should not be here - all records must be inserted
                CPABORT("all records must be inserted")
-            END IF
-         END DO
+            ENDIF
+         ENDDO
          max_neig_fails = .FALSE.
-      END DO max_neig_loop
+      ENDDO max_neig_loop
       DEALLOCATE (domain_map_global)
 
       ientry = 1
@@ -1487,20 +1499,28 @@ CONTAINS
             almo_scf_env%domain_map(ispin)%pairs(ientry, 1) = domain_grid(idomain, ineig)
             almo_scf_env%domain_map(ispin)%pairs(ientry, 2) = idomain
             ientry = ientry + 1
-         END DO
+         ENDDO
          almo_scf_env%domain_map(ispin)%index1(idomain) = ientry
-      END DO
+      ENDDO
       DEALLOCATE (domain_grid)
 
-      !ENDDO ! ispin
-      IF (almo_scf_env%nspins .EQ. 2) THEN
+      ENDDO ! ispin
+
+      IF (almo_scf_env%nspins .EQ. 2 ) THEN
          CALL dbcsr_copy(almo_scf_env%quench_t(2), &
                          almo_scf_env%quench_t(1))
          almo_scf_env%domain_map(2)%pairs(:, :) = &
             almo_scf_env%domain_map(1)%pairs(:, :)
          almo_scf_env%domain_map(2)%index1(:) = &
             almo_scf_env%domain_map(1)%index1(:)
-      END IF
+      !ELSEIF (almo_scf_env%nspins .EQ. 1 ) THEN
+      !   CALL dbcsr_copy(almo_scf_env%quench_t(2), &
+      !                   almo_scf_env%quench_t(1))
+      !   almo_scf_env%domain_map(2)%pairs(:, :) = &
+      !      almo_scf_env%domain_map(1)%pairs(:, :)
+      !   almo_scf_env%domain_map(2)%index1(:) = &
+       !     almo_scf_env%domain_map(1)%index1(:)
+      ENDIF
 
       CALL dbcsr_release(matrix_s_sym)
 
@@ -1508,7 +1528,7 @@ CONTAINS
           almo_scf_env%domain_layout_aos == almo_domain_layout_molecular) THEN
          DEALLOCATE (first_atom_of_molecule)
          DEALLOCATE (last_atom_of_molecule)
-      END IF
+      ENDIF
 
       !mynode = dbcsr_mp_mynode(dbcsr_distribution_mp(&
       !   dbcsr_distribution(almo_scf_env%quench_t(ispin))))
@@ -1556,7 +1576,7 @@ CONTAINS
          scaling = 2.0_dp
       ELSE
          scaling = 1.0_dp
-      END IF
+      ENDIF
 
       DO ispin = 1, almo_scf_env%nspins
 
@@ -1595,7 +1615,7 @@ CONTAINS
          CALL dbcsr_release(tmp_oo1)
          CALL dbcsr_release(tmp_oo2)
 
-      END DO
+      ENDDO
 
       CALL timestop(handle)
 
