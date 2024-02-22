@@ -73,10 +73,34 @@ CONTAINS
                           description="Settings for a class of efficient linear scaling methods based "// &
                           "on absolutely localized orbitals"// &
                           " (ALMOs). ALMO methods are currently restricted to closed-shell molecular systems.", &
-                          n_keywords=10, n_subsections=6, repeats=.FALSE., &
+                          n_keywords=10, n_subsections=7, repeats=.FALSE., &
                           citations=(/Khaliullin2013, Scheiber2018/))
 
-      NULLIFY (keyword)
+      NULLIFY (keyword, subsection)
+      ! FRAGMENT SECTION
+      CALL section_create(subsection, __LOCATION__, name="FRAGMENT", &
+                          description="Specify the caracteristics of"//&
+                          "each fragments.", &
+                          n_keywords=2, n_subsections=0, repeats=.TRUE.)
+
+      CALL keyword_create(keyword, __LOCATION__, name="CHARGE", &
+                          description="Specifies the charge of a fragment.", &
+                          usage="CHARGE 1", default_r_val=0.0_dp)
+      CALL section_add_keyword(subsection, keyword)
+      CALL keyword_release(keyword)
+
+      CALL keyword_create(keyword, __LOCATION__, &
+                          name="MULTIPLICITY", &
+                          variants=(/"MULTIP"/), &
+                          description="Specify for each fragment the multiplicity. Two times the total spin plus one. "// &
+                          "Specify 3 for a triplet, 4 for a quartet,and so on. Default is 1 (singlet) for an "// &
+                          "even number and 2 (doublet) for an odd number of electrons.", &
+                          usage="MULTIPLICITY 3", &
+                          default_i_val=1) ! this default value is just a flag to get the above
+      CALL section_add_keyword(subsection, keyword)
+      CALL keyword_release(keyword)
+      CALL section_add_subsection(section, subsection)
+      CALL section_release(subsection)
 
       CALL keyword_create(keyword, __LOCATION__, name="EPS_FILTER", &
                           description="Threshold for the matrix sparsity filter", &
