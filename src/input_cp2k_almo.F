@@ -82,7 +82,13 @@ CONTAINS
       CALL section_create(subsection, __LOCATION__, name="FRAGMENT", &
                           description="Specify the caracteristics of"//&
                           "each fragments.", &
-                          n_keywords=2, n_subsections=0, repeats=.TRUE.)
+                          n_keywords=3, n_subsections=0, repeats=.TRUE.)
+      
+      CALL keyword_create(keyword, __LOCATION__, name="_FRAGMENT_PARAMETERS_", &
+                          description="Defines the index of the fragment defined", &
+                          usage="<INTEGER>", n_var=1)
+      CALL section_add_keyword(subsection, keyword)
+      CALL keyword_release(keyword)
 
       CALL keyword_create(keyword, __LOCATION__, name="CHARGE", &
                           description="Specifies the charge of a fragment.", &
