@@ -14,11 +14,47 @@
 !> \author MK (29.08.2003)
 ! **************************************************************************************************
 MODULE molecule_types
-
+   USE atomic_kind_types,               ONLY: get_atomic_kind
+   USE cell_types,                      ONLY: cell_type
+   USE cp2k_info,                       ONLY: write_restart_header
+   USE cp_external_control,             ONLY: external_control
+   USE cp_log_handling,                 ONLY: cp_get_default_logger,&
+                                              cp_logger_type
+   USE cp_output_handling,              ONLY: cp_add_iter_level,&
+                                              cp_iterate,&
+                                              cp_print_key_finished_output,&
+                                              cp_print_key_unit_nr,&
+                                              cp_rm_iter_level
+   USE cp_subsys_methods,               ONLY: create_small_subsys
+   USE cp_subsys_types,                 ONLY: cp_subsys_get,&
+                                              cp_subsys_release,&
+                                              cp_subsys_type
+   USE force_env_types,                 ONLY: force_env_get,&
+                                              force_env_type
+   USE global_types,                    ONLY: global_environment_type
+   USE input_constants,                 ONLY: do_qs
+   USE input_section_types,             ONLY: section_vals_get,&
+                                              section_vals_get_subs_vals,&
+                                              section_vals_type,&
+                                              section_vals_val_get,&
+                                              section_vals_val_set,&
+                                              section_vals_write
+   USE kinds,                           ONLY: default_string_length,&
+                                              dp
+   USE memory_utilities,                ONLY: reallocate
+   USE message_passing,                 ONLY: mp_para_env_type
+   USE particle_list_types,             ONLY: particle_list_type
+  ! USE qs_energy,                       ONLY: qs_energies
+  ! USE qs_energy_types,                 ONLY: qs_energy_type
+   USE qs_environment,                  ONLY: qs_init
+   USE qs_environment_types,            ONLY: get_qs_env,&
+                                              qs_env_create,&
+                                              qs_env_release,&
+                                              qs_environment_type
+   USE string_utilities,                ONLY: compress
    USE colvar_types,                    ONLY: colvar_counters,&
                                               colvar_release,&
-                                              colvar_type
-   USE kinds,                           ONLY: dp
+                                              colvar_type 
    USE molecule_kind_types,             ONLY: colvar_constraint_type,&
                                               fixd_constraint_type,&
                                               g3x3_constraint_type,&
@@ -460,6 +496,10 @@ CONTAINS
                                                             nbasis, nelec
       REAL(KIND=dp)                                      :: charge
       TYPE(molecule_kind_type), POINTER                  :: imol_kind
+      TYPE(cp_logger_type), POINTER                      :: logger
+      TYPE(force_env_type), POINTER                      :: force_env
+      TYPE(dft_type), POINTER                            :: dft
+      TYPE(almo_scf_type), POINTER                       :: almo_scf
       TYPE(section_vals_type), POINTER                   :: almo_section, fragment_section, &
                                                             n_frag,root_section,charge_frag, &
                                                             multip_frag
