@@ -25,7 +25,7 @@ MODULE input_cp2k_almo
         optimizer_diis, optimizer_lin_eq_pcg, optimizer_pcg, optimizer_trustr, &
         spd_inversion_dense_cholesky, spd_inversion_ls_hotelling, spd_inversion_ls_taylor, &
         trustr_cauchy, trustr_dogleg, trustr_steihaug, xalmo_prec_domain, xalmo_prec_full, &
-        xalmo_prec_zero, xalmo_trial_r0_out, xalmo_trial_simplex
+        xalmo_prec_zero, xalmo_trial_r0_out,xalmo_trial_simplex
    USE input_keyword_types,             ONLY: keyword_create,&
                                               keyword_release,&
                                               keyword_type
@@ -50,7 +50,6 @@ MODULE input_cp2k_almo
    INTEGER, PARAMETER, PRIVATE :: optimizer_newton_pcg_solver = 5
    INTEGER, PARAMETER, PRIVATE :: optimizer_nlmo_pcg = 6
    INTEGER, PARAMETER, PRIVATE :: optimizer_block_diagonal_trustr = 7
-
    PUBLIC :: create_almo_scf_section
 
 CONTAINS
@@ -73,41 +72,10 @@ CONTAINS
                           description="Settings for a class of efficient linear scaling methods based "// &
                           "on absolutely localized orbitals"// &
                           " (ALMOs). ALMO methods are currently restricted to closed-shell molecular systems.", &
-                          n_keywords=10, n_subsections=7, repeats=.FALSE., &
+                          n_keywords=10, n_subsections=8, repeats=.FALSE., &
                           citations=(/Khaliullin2013, Scheiber2018/))
 
       NULLIFY (keyword, subsection)
-
-      ! FRAGMENT SECTION
-      CALL section_create(subsection, __LOCATION__, name="FRAGMENT", &
-                          description="Specify the caracteristics of"//&
-                          "each fragments.", &
-                          n_keywords=3, n_subsections=0, repeats=.TRUE.)
-      
-      CALL keyword_create(keyword, __LOCATION__, name="_FRAGMENT_PARAMETERS_", &
-                          description="Defines the index of the fragment defined", &
-                          usage="<INTEGER>", n_var=1)
-      CALL section_add_keyword(subsection, keyword)
-      CALL keyword_release(keyword)
-
-      CALL keyword_create(keyword, __LOCATION__, name="CHARGE", &
-                          description="Specifies the charge of a fragment.", &
-                          usage="CHARGE 1", default_r_val=0.0_dp)
-      CALL section_add_keyword(subsection, keyword)
-      CALL keyword_release(keyword)
-
-      CALL keyword_create(keyword, __LOCATION__, &
-                          name="MULTIPLICITY", &
-                          variants=(/"MULTIP"/), &
-                          description="Specify for each fragment the multiplicity. Two times the total spin plus one. "// &
-                          "Specify 3 for a triplet, 4 for a quartet,and so on. Default is 1 (singlet) for an "// &
-                          "even number and 2 (doublet) for an odd number of electrons.", &
-                          usage="MULTIPLICITY 3", &
-                          default_i_val=1) ! this default value is just a flag to get the above
-      CALL section_add_keyword(subsection, keyword)
-      CALL keyword_release(keyword)
-      CALL section_add_subsection(section, subsection)
-      CALL section_release(subsection)
 
       CALL keyword_create(keyword, __LOCATION__, name="EPS_FILTER", &
                           description="Threshold for the matrix sparsity filter", &
@@ -550,6 +518,10 @@ CONTAINS
       !     usage="OPT_K_PREC_ITER_FREQ_UPDATE 10",default_i_val=1)
       !CALL section_add_keyword(section,keyword)
       !CALL keyword_release(keyword)
+      NULLIFY (subsection)
+      CALL create_almo_fragment_section(subsection)
+      CALL section_add_subsection(section, subsection)
+      CALL section_release(subsection)
 
       NULLIFY (subsection)
       CALL create_optimizer_section(subsection, optimizer_block_diagonal_diis)
@@ -1011,6 +983,53 @@ CONTAINS
       CALL section_release(subsection)
 
    END SUBROUTINE create_almo_analysis_section
+
+! **************************************************************************************************
+!> \brief The section controls electronic structure of the different fragments
+!> \param section ...
+!> \par History
+!>       2024.02 created [Raphael Rullan]
+!> \author Raphael Rullan
+! **************************************************************************************************
+   SUBROUTINE create_almo_fragment_section(section)
+
+      TYPE(section_type), POINTER                        :: section
+     
+      TYPE(keyword_type), POINTER                        :: keyword 
+
+      CPASSERT(.NOT. ASSOCIATED(section))
+      NULLIFY (section)
+
+      CALL section_create(section, __LOCATION__, name="FRAGMENT", &
+                          description="Specify the caracteristics of"//&
+                          "each fragments.", &
+                          n_keywords=3, n_subsections=0, repeats=.TRUE.)
+      NULLIFY (keyword)
+      CALL keyword_create(keyword, __LOCATION__, name="_FRAGMENT_PARAMETERS_", &
+                          description="Defines the index of the fragment defined", &
+                          usage="<INTEGER>", n_var=1, default_i_val=0)
+      CALL section_add_keyword(section, keyword)
+      CALL keyword_release(keyword)
+
+      CALL keyword_create(keyword, __LOCATION__, name="CHARGE", &
+                          description="Specifies the charge of a fragment.", &
+                          usage="CHARGE 1", default_r_val=0.0_dp)
+      CALL section_add_keyword(section, keyword)
+      CALL keyword_release(keyword)
+
+      CALL keyword_create(keyword, __LOCATION__, &
+                          name="MULTIPLICITY", &
+                          variants=(/"MULTIP"/), &
+                          description="Specify for each fragment the multiplicity. Two times the total spin plus one. "// &
+                          "Specify 3 for a triplet, 4 for a quartet,and so on. Default is 1 (singlet) for an "// &
+                          "even number and 2 (doublet) for an odd number of electrons.", &
+                          usage="MULTIPLICITY 3", &
+                          default_i_val=1) ! this default value is just a flag to get the above
+      CALL section_add_keyword(section, keyword)
+      CALL keyword_release(keyword)
+   
+    
+   END SUBROUTINE create_almo_fragment_section
 
 ! *****************************************************************************
 !> \brief Create a section with all print keys for ALMO methods
