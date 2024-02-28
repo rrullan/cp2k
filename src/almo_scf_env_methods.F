@@ -96,6 +96,7 @@ CONTAINS
 !> \param almo_scf_env ...
 !> \par History
 !>       2011.05 created [Rustam Z Khaliullin]
+!>       2024.02 modified [Raphael Rullan]
 !> \author Rustam Z Khaliullin
 ! **************************************************************************************************
    SUBROUTINE almo_scf_init_read_write_input(input, almo_scf_env)
@@ -108,7 +109,7 @@ CONTAINS
       TYPE(section_vals_type), POINTER :: almo_analysis_section, almo_opt_diis_section, &
          almo_opt_pcg_section, almo_opt_trustr_section, almo_scf_section, matrix_iterate_section, &
          nlmo_opt_pcg_section, penalty_section, xalmo_opt_newton_pcg_section, &
-         xalmo_opt_pcg_section, xalmo_opt_trustr_section
+         xalmo_opt_pcg_section, xalmo_opt_trustr_section, fragment_section
 
       CALL timeset(routineN, handle)
 
@@ -130,7 +131,7 @@ CONTAINS
                                                                  "XALMO_NEWTON_PCG_SOLVER")
       matrix_iterate_section => section_vals_get_subs_vals(almo_scf_section, &
                                                            "MATRIX_ITERATE")
-
+       
       ! read user input
       ! common ALMO options
       CALL section_vals_val_get(almo_scf_section, "EPS_FILTER", &
@@ -328,11 +329,24 @@ CONTAINS
                                 i_val=almo_scf_env%opt_xalmo_newton_pcg_solver%max_iter_outer_loop)
       CALL section_vals_val_get(xalmo_opt_newton_pcg_section, "PRECONDITIONER", &
                                 i_val=almo_scf_env%opt_xalmo_newton_pcg_solver%preconditioner)
+ 
 
       CALL section_vals_val_get(almo_analysis_section, "_SECTION_PARAMETERS_", &
                                 l_val=almo_scf_env%almo_analysis%do_analysis)
       CALL section_vals_val_get(almo_analysis_section, "FROZEN_MO_ENERGY_TERM", &
                                 i_val=almo_scf_env%almo_analysis%frozen_mo_energy_term)
+     
+      fragment_section => section_vals_get_subs_vals(almo_scf_section,&
+                                                      "FRAGMENT")
+
+      CALL section_vals_val_get(fragment_section, "_FRAGMENT_PARAMETERS_", &
+                                i_val=almo_scf_env%fragment%fragment_parameters)
+
+      CALL section_vals_val_get(fragment_section, "CHARGE", &
+                                i_val=almo_scf_env%fragment%charge)
+
+      CALL section_vals_val_get(fragment_section, "MULTIPLICITY", &
+                                i_val=almo_scf_env%fragment%multiplicity)
 
       !CALL section_vals_val_get(almo_scf_section,"DOMAIN_LAYOUT_AOS",&
       !                          i_val=almo_scf_env%domain_layout_aos)
