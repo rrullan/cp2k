@@ -135,7 +135,9 @@ MODULE molecule_types
              get_molecule, &
              set_molecule, &
              set_molecule_set, &
-             molecule_of_atom
+             molecule_of_atom,&
+             get_molecule_set_info,&
+             get_domain_set_info
       
 
 CONTAINS
@@ -532,7 +534,7 @@ CONTAINS
 !> \author Rustam Z Khaliullin
 ! **************************************************************************************************
 
-   SUBROUTINE get_molecule_set_info_domain(molecule_set, atom_to_mol, mol_to_first_atom, &
+   SUBROUTINE get_domain_set_info(molecule_set, atom_to_mol, mol_to_first_atom, &
                                     mol_to_last_atom, mol_to_nelectrons, mol_to_nbasis, mol_to_charge, &
                                     mol_to_multiplicity)
 
@@ -614,6 +616,6 @@ CONTAINS
 
       END DO ! imol
 
-   END SUBROUTINE get_molecule_set_info_domain
+   END SUBROUTINE get_domain_set_info
 
 END MODULE molecule_types
