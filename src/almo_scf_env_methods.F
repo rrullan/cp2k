@@ -24,7 +24,8 @@ MODULE almo_scf_env_methods
         xalmo_trial_r0_out
    USE input_section_types,             ONLY: section_vals_get_subs_vals,&
                                               section_vals_type,&
-                                              section_vals_val_get
+                                              section_vals_val_get,&
+                                              section_vals_get
    USE kinds,                           ONLY: dp
    USE qs_environment_types,            ONLY: get_qs_env,&
                                               qs_environment_type,&
@@ -67,7 +68,7 @@ CONTAINS
 
       ! parse the almo_scf section and set appropriate quantities
       CALL almo_scf_init_read_write_input(input, almo_scf_env)
-
+     
       ! set up the buffer for the history of matrices
       almo_scf_env%nspins = dft_control%nspins
       almo_scf_env%almo_history%nstore = almo_scf_env%almo_extrapolation_order
@@ -102,15 +103,16 @@ CONTAINS
    SUBROUTINE almo_scf_init_read_write_input(input, almo_scf_env)
       TYPE(section_vals_type), POINTER                   :: input
       TYPE(almo_scf_env_type), INTENT(INOUT)             :: almo_scf_env
-
+      LOGICAL                                            :: explicit
+     
       CHARACTER(len=*), PARAMETER :: routineN = 'almo_scf_init_read_write_input'
 
-      INTEGER                                            :: handle
+      INTEGER                                            ::handle,ndomain, i 
       TYPE(section_vals_type), POINTER :: almo_analysis_section, almo_opt_diis_section, &
          almo_opt_pcg_section, almo_opt_trustr_section, almo_scf_section, matrix_iterate_section, &
          nlmo_opt_pcg_section, penalty_section, xalmo_opt_newton_pcg_section, &
          xalmo_opt_pcg_section, xalmo_opt_trustr_section, fragment_section
-
+     
       CALL timeset(routineN, handle)
 
       almo_scf_section => section_vals_get_subs_vals(input, "DFT%ALMO_SCF")
@@ -339,14 +341,30 @@ CONTAINS
       fragment_section => section_vals_get_subs_vals(almo_scf_section,&
                                                       "FRAGMENT")
 
-      CALL section_vals_val_get(fragment_section, "_FRAGMENT_PARAMETERS_", &
-                                i_val=almo_scf_env%fragment%fragment_parameters)
+      CALL section_vals_get(fragment_section, &
+                           explicit=explicit,n_repetition=ndomain)
+      ALLOCATE (almo_scf_env%charge_of_domain(ndomain))
+      ALLOCATE (almo_scf_env%multiplicity_of_domain(ndomain))
+      almo_scf_env%multiplicity_of_domain=0
+      almo_scf_env%charge_of_domain=0
+      !WRITE(*,*) 'Shape', almo_scf_env%multiplicity_of_domain(:)
+      DO i = 1, ndomain    
+       !       WRITE(*,*) 'Hello' 
+              CALL section_vals_val_get(fragment_section, "CHARGE", &
+                      i_rep_section=i, i_val=almo_scf_env%fragment%charge)
+       !       WRITE(*,*) almo_scf_env%charge_of_domain(:)
+       !       WRITE(*,*) 'Hello 1', almo_scf_env%fragment%charge
+            
+              almo_scf_env%charge_of_domain(i) = almo_scf_env%fragment%charge
+       !       WRITE(*,*) 'Hello 2'
+              CALL section_vals_val_get(fragment_section, "MULTIPLICITY", &
+                                i_rep_section=i,i_val=almo_scf_env%fragment%multiplicity)
+       
+              almo_scf_env%multiplicity_of_domain(i) =almo_scf_env%fragment%multiplicity
+       !       WRITE(*,*) almo_scf_env%multiplicity_of_domain, almo_scf_env%fragment%multiplicity
+              
 
-      CALL section_vals_val_get(fragment_section, "CHARGE", &
-                                i_val=almo_scf_env%fragment%charge)
-
-      CALL section_vals_val_get(fragment_section, "MULTIPLICITY", &
-                                i_val=almo_scf_env%fragment%multiplicity)
+      END DO
 
       !CALL section_vals_val_get(almo_scf_section,"DOMAIN_LAYOUT_AOS",&
       !                          i_val=almo_scf_env%domain_layout_aos)

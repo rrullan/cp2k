@@ -17,7 +17,7 @@ MODULE molecule_types
 
    USE colvar_types,                    ONLY: colvar_counters,&
                                               colvar_release,&
-                                              colvar_type
+                                              colvar_type 
    USE kinds,                           ONLY: dp
    USE molecule_kind_types,             ONLY: colvar_constraint_type,&
                                               fixd_constraint_type,&

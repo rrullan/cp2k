@@ -366,15 +366,15 @@ CONTAINS
       END IF
 
       IF (PRESENT(i_vals)) i_vals => val%i_val
-      IF (PRESENT(i_val)) THEN
+      IF (PRESENT(i_val)) THEN 
          IF (ASSOCIATED(val%i_val)) THEN
             IF (SIZE(val%i_val) > 0) THEN
                i_val = val%i_val(1)
             ELSE
-               CPABORT("")
+               CPABORT("A")
             END IF
-         ELSE
-            CPABORT("")
+         ELSE 
+            CPABORT("B")
          END IF
       END IF
 

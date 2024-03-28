@@ -1117,15 +1117,15 @@ CONTAINS
          END IF
       ELSE IF (ASSOCIATED(keyword%default_value)) THEN
          IF (PRESENT(n_rep_val)) n_rep_val = 1
-         my_val => keyword%default_value
+         my_val => keyword%default_value 
       END IF
-      IF (PRESENT(val)) val => my_val
+      IF (PRESENT(val)) val => my_val 
       IF (valRequested) THEN
          IF (.NOT. ASSOCIATED(my_val)) &
             CALL cp_abort(__LOCATION__, &
                           "Value requested, but no value set getting value from "// &
                           "keyword "//TRIM(keyword_name(my_index:len_key))//" of section "// &
-                          TRIM(section%name))
+                          TRIM(section%name)) 
          CALL val_get(my_val, l_val=l_val, i_val=i_val, r_val=r_val, &
                       c_val=c_val, l_vals=l_vals, i_vals=i_vals, r_vals=r_vals, &
                       c_vals=c_vals)

@@ -263,7 +263,9 @@ CONTAINS
       END IF
 
       ! allocate domain descriptors
-      ndomains = almo_scf_env%ndomains
+      !ndomains = almo_scf_env%ndomains
+      ndomains = SIZE(almo_scf_env%multiplicity_of_domain)
+      WRITE(*,*) 'ndomains', ndomains 
       ALLOCATE (almo_scf_env%domain_index_of_atom(natoms))
       ALLOCATE (almo_scf_env%domain_index_of_ao(naos))
       ALLOCATE (almo_scf_env%first_atom_of_domain(ndomains))
@@ -276,8 +278,8 @@ CONTAINS
       ALLOCATE (almo_scf_env%nvirt_disc_of_domain(ndomains, nspins))
       ALLOCATE (almo_scf_env%mu_of_domain(ndomains, nspins))
       ALLOCATE (almo_scf_env%cpu_of_domain(ndomains))
-      ALLOCATE (almo_scf_env%charge_of_domain(ndomains))
-      ALLOCATE (almo_scf_env%multiplicity_of_domain(ndomains))
+      !ALLOCATE (almo_scf_env%charge_of_domain(ndomains))
+      !ALLOCATE (almo_scf_env%multiplicity_of_domain(ndomains))
 
       ! fill out domain descriptors and group descriptors
       IF (almo_scf_env%domain_layout_mos == almo_domain_layout_molecular) THEN
@@ -287,9 +289,9 @@ CONTAINS
                                     mol_to_first_atom=almo_scf_env%first_atom_of_domain, &
                                     mol_to_last_atom=almo_scf_env%last_atom_of_domain, &
                                     mol_to_nelectrons=almo_scf_env%nocc_of_domain(1:ndomains, 1), &
-                                    mol_to_nbasis=almo_scf_env%nbasis_of_domain, &
-                                    mol_to_charge=almo_scf_env%charge_of_domain, &
-                                    mol_to_multiplicity=almo_scf_env%multiplicity_of_domain)
+                                    mol_to_nbasis=almo_scf_env%nbasis_of_domain)
+                                 !   mol_to_charge=almo_scf_env%charge_of_domain, &
+                                  !  mol_to_multiplicity=almo_scf_env%multiplicity_of_domain)
          ! calculate number of alpha and beta occupied orbitals from
          ! the number of electrons and multiplicity of each molecule
          ! Na + Nb = Ne
@@ -1073,7 +1075,7 @@ CONTAINS
 
          sum_temp = SUM(almo_scf_env%charge_of_domain(:))
          WRITE (unit_nr, '(T2,A,T53,I5,F9.2,I5,I9)') &
-            "Charges per fragment (min, av, max, total):", &
+           "Charges per fragment (min, av, max, total):", &
             MINVAL(almo_scf_env%charge_of_domain(:)), &
             (1.0_dp*sum_temp)/almo_scf_env%ndomains, &
             MAXVAL(almo_scf_env%charge_of_domain(:)), &

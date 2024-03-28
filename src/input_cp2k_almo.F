@@ -1013,7 +1013,7 @@ CONTAINS
 
       CALL keyword_create(keyword, __LOCATION__, name="CHARGE", &
                           description="Specifies the charge of a fragment.", &
-                          usage="CHARGE 1", default_r_val=0.0_dp)
+                          usage="CHARGE 1", default_i_val=0)
       CALL section_add_keyword(section, keyword)
       CALL keyword_release(keyword)
 

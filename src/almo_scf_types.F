@@ -58,7 +58,7 @@ MODULE almo_scf_types
 
    TYPE fragment_type
  
-      INTEGER            :: fragment_parameters = 0, charge = 0, multiplicity = 1
+      INTEGER         :: fragment_parameters=0, charge=0, multiplicity=1
  
    END TYPE fragment_type
 
@@ -165,7 +165,7 @@ MODULE almo_scf_types
       ! Charge of domains
       INTEGER, DIMENSION(:), ALLOCATABLE                  :: charge_of_domain
       ! Charge of domains
-      INTEGER, DIMENSION(:), ALLOCATABLE                  :: multiplicity_of_domain
+      INTEGER, DIMENSION(:), ALLOCATABLE                 :: multiplicity_of_domain
 
       ! The matrix contains information about the delocalization of
       ! alpha and beta electrons.
