@@ -490,7 +490,7 @@ CONTAINS
             END IF
          END IF
 
-         IF (PRESENT(mol_to_charge)) THEN
+         IF (PRESENT(mol_to_charge)) THEN 
             CALL get_molecule_kind(imol_kind, charge=charge)
             mol_to_charge(imol) = NINT(charge)
          END IF

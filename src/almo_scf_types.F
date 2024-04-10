@@ -166,7 +166,7 @@ MODULE almo_scf_types
       INTEGER, DIMENSION(:), ALLOCATABLE                  :: charge_of_domain
       ! Charge of domains
       INTEGER, DIMENSION(:), ALLOCATABLE                 :: multiplicity_of_domain
-
+      INTEGER, DIMENSION(:), ALLOCATABLE                 :: activate
       ! The matrix contains information about the delocalization of
       ! alpha and beta electrons.
       ! Rows denote basis function, columns denote electrons.

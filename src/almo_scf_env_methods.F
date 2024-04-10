@@ -340,31 +340,31 @@ CONTAINS
      
       fragment_section => section_vals_get_subs_vals(almo_scf_section,&
                                                       "FRAGMENT")
-
       CALL section_vals_get(fragment_section, &
                            explicit=explicit,n_repetition=ndomain)
-      ALLOCATE (almo_scf_env%charge_of_domain(ndomain))
-      ALLOCATE (almo_scf_env%multiplicity_of_domain(ndomain))
-      almo_scf_env%multiplicity_of_domain=0
-      almo_scf_env%charge_of_domain=0
-      !WRITE(*,*) 'Shape', almo_scf_env%multiplicity_of_domain(:)
-      DO i = 1, ndomain    
-       !       WRITE(*,*) 'Hello' 
-              CALL section_vals_val_get(fragment_section, "CHARGE", &
-                      i_rep_section=i, i_val=almo_scf_env%fragment%charge)
-       !       WRITE(*,*) almo_scf_env%charge_of_domain(:)
-       !       WRITE(*,*) 'Hello 1', almo_scf_env%fragment%charge
-            
-              almo_scf_env%charge_of_domain(i) = almo_scf_env%fragment%charge
-       !       WRITE(*,*) 'Hello 2'
-              CALL section_vals_val_get(fragment_section, "MULTIPLICITY", &
-                                i_rep_section=i,i_val=almo_scf_env%fragment%multiplicity)
-       
-              almo_scf_env%multiplicity_of_domain(i) =almo_scf_env%fragment%multiplicity
-       !       WRITE(*,*) almo_scf_env%multiplicity_of_domain, almo_scf_env%fragment%multiplicity
-              
+      IF (explicit) THEN
+              WRITE(*,*) 'HELLO RAPH'
+              ALLOCATE (almo_scf_env%charge_of_domain(ndomain))
+              ALLOCATE (almo_scf_env%multiplicity_of_domain(ndomain))
+              ALLOCATE (almo_scf_env%activate(1))
+              almo_scf_env%multiplicity_of_domain=0
+              almo_scf_env%charge_of_domain=0
+              almo_scf_env%activate=1
+              DO i = 1, ndomain
 
-      END DO
+                CALL section_vals_val_get(fragment_section, "CHARGE", &
+                        i_rep_section=i, i_val=almo_scf_env%fragment%charge)
+                almo_scf_env%charge_of_domain(i) = almo_scf_env%fragment%charge
+
+                CALL section_vals_val_get(fragment_section, "MULTIPLICITY", &
+                                i_rep_section=i,i_val=almo_scf_env%fragment%multiplicity)
+                almo_scf_env%multiplicity_of_domain(i) =almo_scf_env%fragment%multiplicity
+              END DO
+      ELSE 
+              WRITE(*,*) 'BYE RAPHA'
+              ALLOCATE (almo_scf_env%activate(1))  
+              almo_scf_env%activate=0
+      END IF
 
       !CALL section_vals_val_get(almo_scf_section,"DOMAIN_LAYOUT_AOS",&
       !                          i_val=almo_scf_env%domain_layout_aos)

@@ -250,11 +250,10 @@ CONTAINS
          END IF
       END IF
 
-      ! convenient local varibales
-      nspins = almo_scf_env%nspins
+      ! convenient local varibales 
       nmols = almo_scf_env%nmolecules
       natoms = almo_scf_env%natoms
-
+    
       ! Define groups: either atomic or molecular
       IF (almo_scf_env%domain_layout_mos == almo_domain_layout_molecular) THEN
          almo_scf_env%ndomains = almo_scf_env%nmolecules
@@ -262,10 +261,19 @@ CONTAINS
          almo_scf_env%ndomains = almo_scf_env%natoms
       END IF
 
-      ! allocate domain descriptors
-      !ndomains = almo_scf_env%ndomains
-      ndomains = SIZE(almo_scf_env%multiplicity_of_domain)
-      WRITE(*,*) 'ndomains', ndomains 
+      IF (almo_scf_env%activate(1) == 1) THEN
+              ndomains = SIZE(almo_scf_env%multiplicity_of_domain)
+              nspins = SIZE(almo_scf_env%multiplicity_of_domain)
+      ELSE
+              nspins = almo_scf_env%nspins
+              ndomains = almo_scf_env%ndomains 
+      END IF
+
+      IF (almo_scf_env%activate(1) == 0) THEN
+              ALLOCATE (almo_scf_env%charge_of_domain(ndomains))
+              ALLOCATE (almo_scf_env%multiplicity_of_domain(ndomains))
+      END IF
+         
       ALLOCATE (almo_scf_env%domain_index_of_atom(natoms))
       ALLOCATE (almo_scf_env%domain_index_of_ao(naos))
       ALLOCATE (almo_scf_env%first_atom_of_domain(ndomains))
@@ -277,21 +285,31 @@ CONTAINS
       ALLOCATE (almo_scf_env%nvirt_of_domain(ndomains, nspins))
       ALLOCATE (almo_scf_env%nvirt_disc_of_domain(ndomains, nspins))
       ALLOCATE (almo_scf_env%mu_of_domain(ndomains, nspins))
-      ALLOCATE (almo_scf_env%cpu_of_domain(ndomains))
-      !ALLOCATE (almo_scf_env%charge_of_domain(ndomains))
-      !ALLOCATE (almo_scf_env%multiplicity_of_domain(ndomains))
+      ALLOCATE (almo_scf_env%cpu_of_domain(ndomains))  
+    
 
       ! fill out domain descriptors and group descriptors
       IF (almo_scf_env%domain_layout_mos == almo_domain_layout_molecular) THEN
          ! get domain info from molecule_set
-         CALL get_molecule_set_info(molecule_set, &
+         IF (almo_scf_env%activate(1) == 1) THEN 
+                 CALL get_molecule_set_info(molecule_set, &
                                     atom_to_mol=almo_scf_env%domain_index_of_atom, &
                                     mol_to_first_atom=almo_scf_env%first_atom_of_domain, &
                                     mol_to_last_atom=almo_scf_env%last_atom_of_domain, &
                                     mol_to_nelectrons=almo_scf_env%nocc_of_domain(1:ndomains, 1), &
                                     mol_to_nbasis=almo_scf_env%nbasis_of_domain)
-                                 !   mol_to_charge=almo_scf_env%charge_of_domain, &
+                                  !  mol_to_charge=almo_scf_env%charge_of_domain, &
                                   !  mol_to_multiplicity=almo_scf_env%multiplicity_of_domain)
+         ELSE 
+                 CALL get_molecule_set_info(molecule_set, &
+                                    atom_to_mol=almo_scf_env%domain_index_of_atom, &
+                                    mol_to_first_atom=almo_scf_env%first_atom_of_domain, &
+                                    mol_to_last_atom=almo_scf_env%last_atom_of_domain, &
+                                    mol_to_nelectrons=almo_scf_env%nocc_of_domain(1:ndomains, 1), &
+                                    mol_to_nbasis=almo_scf_env%nbasis_of_domain,&
+                                    mol_to_charge=almo_scf_env%charge_of_domain, &
+                                    mol_to_multiplicity=almo_scf_env%multiplicity_of_domain)
+         END IF
          ! calculate number of alpha and beta occupied orbitals from
          ! the number of electrons and multiplicity of each molecule
          ! Na + Nb = Ne
@@ -299,8 +317,10 @@ CONTAINS
          DO idomain = 1, ndomains
             nelec = almo_scf_env%nocc_of_domain(idomain, 1)
             multip = almo_scf_env%multiplicity_of_domain(idomain)
+           ! WRITE(*,*) 'nelec_a', nelec_a
             nelec_a = (nelec + multip - 1)/2
             nelec_b = nelec - nelec_a
+           ! WRITE(*,*) 'nelec_b', nelec_b
             !! Initializing an occupation-rescaling trick if smearing is on
             IF (almo_scf_env%smear) THEN
                IF (multip .GT. 1) THEN
@@ -2842,6 +2862,7 @@ CONTAINS
       DEALLOCATE (almo_scf_env%mu_of_domain)
       DEALLOCATE (almo_scf_env%cpu_of_domain)
       DEALLOCATE (almo_scf_env%charge_of_domain)
+      DEALLOCATE (almo_scf_env%activate)
       DEALLOCATE (almo_scf_env%multiplicity_of_domain)
       IF (almo_scf_env%smear) THEN
          DEALLOCATE (almo_scf_env%mo_energies)
