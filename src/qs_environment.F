@@ -234,7 +234,7 @@ CONTAINS
 !> \author Creation (22.05.2000,MK)
 ! **************************************************************************************************
    SUBROUTINE qs_init(qs_env, para_env, root_section, globenv, cp_subsys, kpoint_env, cell, cell_ref, &
-                      qmmm, qmmm_env_qm, force_env_section, subsys_section, use_motion_section)
+                      qmmm, qmmm_env_qm, force_env_section,subsys_section, use_motion_section, multip)
 
       TYPE(qs_environment_type), POINTER                 :: qs_env
       TYPE(mp_para_env_type), POINTER                    :: para_env
@@ -247,7 +247,7 @@ CONTAINS
       TYPE(qmmm_env_qm_type), OPTIONAL, POINTER          :: qmmm_env_qm
       TYPE(section_vals_type), POINTER                   :: force_env_section, subsys_section
       LOGICAL, INTENT(IN)                                :: use_motion_section
-
+      INTEGER, INTENT(IN), OPTIONAL                      :: multip
       CHARACTER(LEN=default_string_length)               :: basis_type
       INTEGER                                            :: ikind, method_id, nelectron_total, &
                                                             nkind, nkp_grid(3)
@@ -364,7 +364,7 @@ CONTAINS
       END IF
 
       CALL qs_init_subsys(qs_env, para_env, subsys, my_cell, my_cell_ref, use_ref_cell, &
-                          subsys_section, silent=silent)
+                          subsys_section, silent=silent, multip=multip)
 
       CALL get_qs_env(qs_env, dft_control=dft_control)
       IF (method_id == do_method_lrigpw .OR. dft_control%qs_control%lri_optbas) THEN
@@ -560,16 +560,16 @@ CONTAINS
 !> \author Creation (22.05.2000,MK)
 ! **************************************************************************************************
    SUBROUTINE qs_init_subsys(qs_env, para_env, subsys, cell, cell_ref, use_ref_cell, subsys_section, &
-                             silent)
+                             silent, multip)
 
-      TYPE(qs_environment_type), POINTER                 :: qs_env
+      TYPE(qs_environment_type), POINTER                 :: qs_env 
       TYPE(mp_para_env_type), POINTER                    :: para_env
       TYPE(qs_subsys_type), POINTER                      :: subsys
       TYPE(cell_type), POINTER                           :: cell, cell_ref
       LOGICAL, INTENT(in)                                :: use_ref_cell
       TYPE(section_vals_type), POINTER                   :: subsys_section
       LOGICAL, INTENT(in), OPTIONAL                      :: silent
-
+      INTEGER, INTENT(IN), OPTIONAL                      :: multip
       CHARACTER(len=*), PARAMETER                        :: routineN = 'qs_init_subsys'
 
       CHARACTER(len=2)                                   :: element_symbol
@@ -1414,6 +1414,10 @@ CONTAINS
       END IF
 
       multiplicity = dft_control%multiplicity
+      IF (PRESENT(multip)) THEN
+             multiplicity=multip
+             WRITE(*,*) 'Why this is not the good one ?', multiplicity
+      END IF
 
       IF ((dft_control%nspins < 1) .OR. (dft_control%nspins > 2)) THEN
          CPABORT("nspins should be 1 or 2 for the time being ...")
@@ -1653,6 +1657,9 @@ CONTAINS
 
       IF (.NOT. be_silent) THEN
          ! Print the DFT control parameters
+         IF (PRESENT(multip)) THEN
+                 dft_control%multiplicity = multiplicity
+         END IF
          CALL write_dft_control(dft_control, dft_section)
 
          ! Print the vdW control parameters
