@@ -16,7 +16,31 @@
 !> \author Rustam Z Khaliullin
 ! **************************************************************************************************
 MODULE mscfg_methods
-   USE almo_scf_types,                  ONLY: almo_scf_env_type
+   USE almo_scf_methods,                ONLY: almo_scf_p_blk_to_t_blk,&
+                                              almo_scf_t_rescaling,&
+                                              almo_scf_t_to_proj,&
+                                              distribute_domains,&
+                                              orthogonalize_mos
+   USE almo_scf_optimizer,              ONLY: almo_scf_block_diagonal,&
+                                              almo_scf_construct_nlmos,&
+                                              almo_scf_xalmo_eigensolver,&
+                                              almo_scf_xalmo_pcg,&
+                                              almo_scf_xalmo_trustr
+   USE almo_scf_qs,                     ONLY: almo_dm_to_almo_ks,&
+                                              almo_scf_construct_quencher,&
+                                              calculate_w_matrix_almo,&
+                                              construct_qs_mos,&
+                                              init_almo_ks_matrix_via_qs,&
+                                              matrix_almo_create,&
+                                              matrix_qs_to_almo
+   USE almo_scf_types,                  ONLY: almo_mat_dim_aobasis,&
+                                              almo_mat_dim_occ,&
+                                              almo_mat_dim_virt,&
+                                              almo_mat_dim_virt_disc,&
+                                              almo_mat_dim_virt_full,&
+                                              almo_scf_env_type,&
+                                              optimizer_options_type,&
+                                              print_optimizer_options
    USE atomic_kind_types,               ONLY: get_atomic_kind
    USE cell_types,                      ONLY: cell_type
    USE cp_dbcsr_operations,             ONLY: copy_fm_to_dbcsr
@@ -81,7 +105,7 @@ CONTAINS
 
       TYPE(global_environment_type), POINTER             :: globenv
       TYPE(force_env_type), POINTER                      :: force_env
-
+ 
       INTEGER                                            :: nmols
       INTEGER, ALLOCATABLE, DIMENSION(:)                 :: charge_of_frag, first_atom_of_frag, &
                                                             last_atom_of_frag, multip_of_frag
@@ -137,7 +161,7 @@ CONTAINS
       TYPE(force_env_type), POINTER                      :: force_env
       TYPE(global_environment_type), POINTER             :: globenv
       INTEGER, INTENT(IN)                                :: nfrags
-      INTEGER, DIMENSION(:), INTENT(IN)                  :: first_atom_of_frag, last_atom_of_frag, &
+      INTEGER, DIMENSION(:), INTENT(INOUT)                  :: first_atom_of_frag, last_atom_of_frag, &
                                                             charge_of_frag, multip_of_frag
 
       CHARACTER(LEN=*), PARAMETER :: routineN = 'calcs_on_isolated_molecules'
@@ -239,7 +263,7 @@ CONTAINS
       ! * ... add your own and explain it here ...
       !
       !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-      DO ifrag = 1, nfrags
+      DO ifrag = 1, nfrags 
          !
          ! Turn ALMO SCF flag off
          !
@@ -247,8 +271,14 @@ CONTAINS
          !
          ! Setup the charge and multiplicity of the molecule
          !
-         CALL section_vals_val_set(dft_section, "CHARGE", i_val=charge_of_frag(ifrag))
-         CALL section_vals_val_set(dft_section, "MULTIPLICITY", i_val=multip_of_frag(ifrag))
+         WRITE(*,*) 'present ?', almo_scf_env%activate(1)
+             IF (almo_scf_env%activate(1) == 1) THEN
+                     multip_of_frag(ifrag) = almo_scf_env%multiplicity_of_domain(ifrag)
+                     charge_of_frag(ifrag) = almo_scf_env%charge_of_domain(ifrag)
+             ELSE
+                  CALL section_vals_val_set(dft_section, "CHARGE", i_val=charge_of_frag(ifrag))
+                  CALL section_vals_val_set(dft_section, "MULTIPLICITY", i_val=multip_of_frag(ifrag))
+             END IF 
          !
          ! Create a list of atoms in the current molecule
          !
@@ -288,7 +318,7 @@ CONTAINS
          CALL qs_env_create(qs_env_loc, globenv)
          CALL qs_init(qs_env_loc, para_env, root_section, globenv=globenv, cp_subsys=subsys_loc, &
                       force_env_section=force_env_section, subsys_section=subsys_section, &
-                      use_motion_section=.FALSE.)
+                      use_motion_section=.FALSE., multip=multip_of_frag(ifrag))
          CALL cp_subsys_release(subsys_loc)
 
          !

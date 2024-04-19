@@ -165,7 +165,8 @@ CONTAINS
          offset(2) = offset(2) + submatrix_size(2)
 
       END DO
-
+      WRITE(*,*) 'offset', offset(2)
+      WRITE(*,*) 'matrixsize',  matrix_size(2)
       ! Check that the accumulated size of submatrices
       ! is exactly the same as the size of the big matrix
       ! This is to prevent unexpected conversion errors

@@ -183,7 +183,7 @@ CONTAINS
       INTEGER                                            :: ao, handle, i, iao, idomain, ispin, &
                                                             multip, naos, natoms, ndomains, nelec, &
                                                             nelec_a, nelec_b, nmols, nspins, &
-                                                            unit_nr
+                                                            unit_nr, counter
       TYPE(cp_logger_type), POINTER                      :: logger
       TYPE(dbcsr_p_type), DIMENSION(:), POINTER          :: matrix_s
       TYPE(dft_control_type), POINTER                    :: dft_control
@@ -316,11 +316,13 @@ CONTAINS
          ! Na - Nb = Mult - 1 (assume Na > Nb as we do not have more info from get_molecule_set_info)
          DO idomain = 1, ndomains
             nelec = almo_scf_env%nocc_of_domain(idomain, 1)
-            multip = almo_scf_env%multiplicity_of_domain(idomain)
-           ! WRITE(*,*) 'nelec_a', nelec_a
+            !!Cette ligne sera à bouger lorsqu'on utilisera vraiment
+            !!UKS avec une multiplicité différente.
+            multip = almo_scf_env%multiplicity_of_domain(idomain) 
             nelec_a = (nelec + multip - 1)/2
+            WRITE(*,*) 'nelec_a', nelec_a
             nelec_b = nelec - nelec_a
-           ! WRITE(*,*) 'nelec_b', nelec_b
+            WRITE(*,*) 'nelec_b', nelec_b
             !! Initializing an occupation-rescaling trick if smearing is on
             IF (almo_scf_env%smear) THEN
                IF (multip .GT. 1) THEN
@@ -336,12 +338,13 @@ CONTAINS
                                                             - almo_scf_env%first_atom_of_domain(idomain) + 1)
             ELSE
                almo_scf_env%nocc_of_domain(idomain, 1) = nelec_a
+               almo_scf_env%nocc_of_domain(idomain, 2) = nelec_b
                IF (nelec_a .NE. nelec_b) THEN
                   IF (nspins .EQ. 1) THEN
                      WRITE (*, *) "Domain ", idomain, " out of ", ndomains, ". Electrons = ", nelec
                      CPABORT("odd e- -- use unrestricted methods")
                   END IF
-                  almo_scf_env%nocc_of_domain(idomain, 2) = nelec_b
+                  !almo_scf_env%nocc_of_domain(idomain, 2) = nelec_b
                   ! RZK-warning: open-shell procedures have not been tested yet
                   ! Stop the program now
                   !CPABORT("Unrestricted ALMO methods are NYI")
@@ -353,6 +356,9 @@ CONTAINS
             almo_scf_env%nvirt_full_of_domain(:, ispin) = &
                almo_scf_env%nbasis_of_domain(:) - &
                almo_scf_env%nocc_of_domain(:, ispin)
+           WRITE(*,*) 'nbasis_of_domain',  almo_scf_env%nbasis_of_domain
+           WRITE(*,*) 'nocc_of_domain',  almo_scf_env%nocc_of_domain
+           WRITE(*,*) 'virtual',  almo_scf_env%nvirt_full_of_domain
             ! and the truncated virtual subspace
             SELECT CASE (almo_scf_env%deloc_truncate_virt)
             CASE (virt_full)
@@ -516,8 +522,8 @@ CONTAINS
       ALLOCATE (almo_scf_env%domain_err(ndomains, nspins))
       CALL init_submatrices(almo_scf_env%domain_err)
       ALLOCATE (almo_scf_env%domain_r_down_up(ndomains, nspins))
-      CALL init_submatrices(almo_scf_env%domain_r_down_up)
-
+      CALL init_submatrices(almo_scf_env%domain_r_down_up) 
+      counter = 0
       ! initialization of the KS matrix
       CALL init_almo_ks_matrix_via_qs(qs_env, &
                                       almo_scf_env%matrix_ks, &
@@ -1162,7 +1168,7 @@ CONTAINS
 
                WRITE (unit_nr, '(T2,I10,I13,I13,I13,I13,A13)') &
                   idomain, almo_scf_env%nbasis_of_domain(idomain), &
-                  SUM(almo_scf_env%nocc_of_domain(idomain, :)), &
+                  almo_scf_env%nocc_of_domain(idomain, 1), &
                   SUM(almo_scf_env%nvirt_of_domain(idomain, :)), &
                   !SUM(almo_scf_env%nvirt_disc_of_domain(idomain,:)),&
                   almo_scf_env%charge_of_domain(idomain), &

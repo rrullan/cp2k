@@ -241,15 +241,16 @@ CONTAINS
 !>      11.2002 rewamped [fawzi]
 !> \author Fawzi Mohamed
 ! **************************************************************************************************
-   SUBROUTINE init_mo_set(mo_set, fm_pool, fm_ref, fm_struct, name)
+   SUBROUTINE init_mo_set(mo_set, fm_pool, fm_ref, fm_struct, name, counter)
 
       TYPE(mo_set_type), INTENT(INOUT)                   :: mo_set
       TYPE(cp_fm_pool_type), INTENT(IN), OPTIONAL        :: fm_pool
       TYPE(cp_fm_type), INTENT(IN), OPTIONAL             :: fm_ref
       TYPE(cp_fm_struct_type), OPTIONAL, POINTER         :: fm_struct
       CHARACTER(LEN=*), INTENT(in)                       :: name
+      INTEGER, INTENT(INOUT), OPTIONAL                   :: counter
 
-      INTEGER                                            :: nao, nmo, nomo
+      INTEGER                                            :: nao, nmo,nomo,na,nb
 
       CPASSERT(.NOT. ASSOCIATED(mo_set%eigenvalues))
       CPASSERT(.NOT. ASSOCIATED(mo_set%occupation_numbers))
@@ -283,17 +284,35 @@ CONTAINS
       IF (mo_set%nelectron == 0) THEN
          RETURN
       END IF
-
+      WRITE(*,*) 'nelectron', mo_set%nelectron
+     ! IF ((mo_set%maxocc == 1)) THEN
+     !         mo_set%maxocc = 2
+     ! END IF
+      WRITE(*,*) 'maxocc', mo_set%maxocc
       IF (MODULO(mo_set%nelectron, INT(mo_set%maxocc)) == 0) THEN
+              IF (PRESENT(counter)) THEN
+         na = (mo_set%nelectron + counter - 1)/2
+         nb = mo_set%nelectron - na
+         nomo = NINT(mo_set%nelectron/mo_set%maxocc) + (na - nb)/2
+              ELSE
          nomo = NINT(mo_set%nelectron/mo_set%maxocc)
-         mo_set%occupation_numbers(1:nomo) = mo_set%maxocc
+              END IF 
+         IF (PRESENT(counter)) THEN
+                 mo_set%occupation_numbers(1:nomo-((na - nb)/2)) = mo_set%maxocc
+                 mo_set%occupation_numbers(1:nomo-((na - nb)/2)) = mo_set%maxocc
+         ELSE         
+                 mo_set%occupation_numbers(1:nomo) = mo_set%maxocc
+         END IF
       ELSE
-         nomo = INT(mo_set%nelectron/mo_set%maxocc) + 1
+         WRITE(*,*) 'Je suis passé là' 
+         nomo = INT(mo_set%nelectron/mo_set%maxocc) + 1 
          ! Initialize MO occupations
          mo_set%occupation_numbers(1:nomo - 1) = mo_set%maxocc
-         mo_set%occupation_numbers(nomo) = mo_set%nelectron - (nomo - 1)*mo_set%maxocc
+         mo_set%occupation_numbers(nomo-((na - nb)/2):nomo) = 1
       END IF
-
+      WRITE(*,*) 'counter', counter
+      WRITE(*,*) 'nmo', nmo
+      WRITE(*,*) 'nomo', nomo
       CPASSERT(nmo >= nomo)
       CPASSERT((SIZE(mo_set%occupation_numbers) == nmo))
 

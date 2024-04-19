@@ -342,8 +342,7 @@ CONTAINS
                                                       "FRAGMENT")
       CALL section_vals_get(fragment_section, &
                            explicit=explicit,n_repetition=ndomain)
-      IF (explicit) THEN
-              WRITE(*,*) 'HELLO RAPH'
+      IF (explicit) THEN 
               ALLOCATE (almo_scf_env%charge_of_domain(ndomain))
               ALLOCATE (almo_scf_env%multiplicity_of_domain(ndomain))
               ALLOCATE (almo_scf_env%activate(1))
@@ -360,8 +359,7 @@ CONTAINS
                                 i_rep_section=i,i_val=almo_scf_env%fragment%multiplicity)
                 almo_scf_env%multiplicity_of_domain(i) =almo_scf_env%fragment%multiplicity
               END DO
-      ELSE 
-              WRITE(*,*) 'BYE RAPHA'
+      ELSE  
               ALLOCATE (almo_scf_env%activate(1))  
               almo_scf_env%activate=0
       END IF

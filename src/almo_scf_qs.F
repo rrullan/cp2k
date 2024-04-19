@@ -577,7 +577,7 @@ CONTAINS
 
       CHARACTER(len=*), PARAMETER                        :: routineN = 'construct_qs_mos'
 
-      INTEGER                                            :: handle, ispin, ncol_fm, nrow_fm
+      INTEGER                                            :: handle,ispin, ncol_fm, nrow_fm, counter
       TYPE(cp_fm_struct_type), POINTER                   :: fm_struct_tmp
       TYPE(cp_fm_type)                                   :: mo_fm_copy
       TYPE(dft_control_type), POINTER                    :: dft_control
@@ -595,10 +595,14 @@ CONTAINS
       CALL set_qs_env(qs_env, scf_env=scf_env)
       CALL get_qs_env(qs_env, dft_control=dft_control, mos=mos)
 
-      CALL dbcsr_get_info(almo_scf_env%matrix_t(1), nfullrows_total=nrow_fm, nfullcols_total=ncol_fm)
-
+      !CALL dbcsr_get_info(almo_scf_env%matrix_t(1), nfullrows_total=nrow_fm, nfullcols_total=ncol_fm)
+      !WRITE(*,*) 'nfullrows_total', nrow_fm   
+      !WRITE(*,*) 'nfullcols_total', ncol_fm
       ! allocate and init mo_set
       DO ispin = 1, almo_scf_env%nspins
+      CALL dbcsr_get_info(almo_scf_env%matrix_t(ispin), nfullrows_total=nrow_fm, nfullcols_total=ncol_fm)
+      WRITE(*,*) 'nfullrows_total', nrow_fm
+      WRITE(*,*) 'nfullcols_total', ncol_fm
          IF (almo_scf_env%nspins .EQ. 1) THEN
                  CALL allocate_mo_set(mo_set=mos(ispin), &
                               nao=nrow_fm, &
@@ -608,11 +612,12 @@ CONTAINS
                               maxocc=2.0_dp, &
                               flexible_electron_count=dft_control%relax_multiplicity)
          ELSEIF (almo_scf_env%nspins .EQ. 2) THEN
+                 WRITE(*,*) 'Il repassera par là'
                  CALL allocate_mo_set(mo_set=mos(ispin), &
                               nao=nrow_fm, &
                               nmo=ncol_fm, &
-                              nelectron=almo_scf_env%nelectrons_total, &
-                              n_el_f=REAL(almo_scf_env%nelectrons_total, dp), &
+                              nelectron=SUM(almo_scf_env%nocc_of_domain(:,ispin)), &
+                              n_el_f=REAL(SUM(almo_scf_env%nocc_of_domain(:,ispin)), dp), &
                               maxocc=1.0_dp, &
                               flexible_electron_count=dft_control%relax_multiplicity)
          ENDIF
@@ -625,7 +630,7 @@ CONTAINS
          CALL cp_fm_create(mo_fm_copy, fm_struct_tmp, name="t_orthogonal_converted_to_fm")
          CALL cp_fm_struct_release(fm_struct_tmp)
          !CALL copy_dbcsr_to_fm(almo_scf_env%matrix_t(ispin), mo_fm_copy)
-
+         counter=almo_scf_env%multiplicity_of_domain(1) 
          CALL init_mo_set(mos(ispin), fm_ref=mo_fm_copy, name='fm_mo')
 
          CALL cp_fm_release(mo_fm_copy)
